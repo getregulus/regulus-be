@@ -1,6 +1,6 @@
-const safeEval = require("safe-eval");
 const db = require("../models/db");
 const Joi = require("joi");
+const { evaluateTransaction } = require("../utils/ruleEngine");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -29,45 +29,52 @@ exports.createTransaction = async (req, res) => {
       .json({ success: false, error: error.details[0].message });
   }
 
-  const { transaction_id, user_id, amount, currency, country, timestamp } =
-    value;
-  let flagged = amount > 10000 || country === "TR";
-  let reasons = [];
+  const transaction = value;
 
   try {
     await db.query("BEGIN");
 
+    // Fetch all rules from the database
+    const { rows: rules } = await db.query("SELECT * FROM rules");
+
+    // Evaluate transaction against rules
+    const { flagged, reasons } = evaluateTransaction(transaction, rules);
+
+    // Insert the transaction into the database
     await db.query(
       `INSERT INTO transactions (transaction_id, user_id, amount, currency, country, timestamp, flagged)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [transaction_id, user_id, amount, currency, country, timestamp, flagged]
+      [
+        transaction.transaction_id,
+        transaction.user_id,
+        transaction.amount,
+        transaction.currency,
+        transaction.country,
+        transaction.timestamp,
+        flagged,
+      ]
     );
-
-    // Fetch and evaluate custom rules
-    const { rows: rules } = await db.query("SELECT * FROM rules");
-    for (const rule of rules) {
-      const context = { amount, country, currency, timestamp };
-      if (safeEval(rule.condition, context)) {
-        flagged = true;
-        reasons.push(`Custom alert: ${rule.rule_name}`);
-      }
-    }
 
     // Insert alerts if flagged
     if (flagged) {
-      await db.query(
-        `INSERT INTO alerts (transaction_id, reason) VALUES ($1, $2)`,
-        [transaction_id, reasons.join(", ")]
-      );
+      for (const reason of reasons) {
+        await db.query(
+          `INSERT INTO alerts (transaction_id, reason) VALUES ($1, $2)`,
+          [transaction.transaction_id, reason]
+        );
+      }
     }
 
-    await db.query("COMMIT"); // Commit transaction
+    // Commit transaction
+    await db.query("COMMIT");
+
     res.status(201).json({
       success: true,
       message: flagged ? "Transaction flagged!" : "Transaction created!",
     });
   } catch (error) {
-    await db.query("ROLLBACK"); // Rollback transaction
+    // Rollback transaction
+    await db.query("ROLLBACK");
     console.error("Error in createTransaction:", error.message);
     if (error.code === "23505") {
       res
