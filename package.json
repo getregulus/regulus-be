@@ -10,9 +10,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "joi": "^17.13.3",
     "pg": "^8.13.1",
-    "pino": "^9.6.0"
+    "pino": "^9.6.0",
+    "safe-eval": "^0.4.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   }
 }
