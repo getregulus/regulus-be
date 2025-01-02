@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14
+    container_name: regulus-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: regulus
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  regulus:
+    build: .
+    container_name: regulus-aml
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASS: postgres
+      DB_NAME: regulus
+      DB_PORT: 5432
+      PORT: 3000
+
+volumes:
+  db_data:
