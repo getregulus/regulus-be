@@ -18,11 +18,13 @@ app.use(
 const transactionRoutes = require("./routes/transactions");
 const alertRoutes = require("./routes/alerts");
 const ruleRoutes = require("./routes/rules");
+const watchlistRoutes = require("./routes/watchlist");
 
 // Routes
 app.use("/transactions", transactionRoutes);
 app.use("/alerts", alertRoutes);
 app.use("/rules", ruleRoutes);
+app.use("/watchlist", watchlistRoutes);
 
 // Default Route
 app.get("/", (req, res) => {

@@ -1,6 +1,7 @@
 const db = require("../models/db");
 const Joi = require("joi");
 const { evaluateTransaction } = require("../utils/ruleEngine");
+const { checkWatchlist } = require("../utils/watchlistCheck");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -34,11 +35,22 @@ exports.createTransaction = async (req, res) => {
   try {
     await db.query("BEGIN");
 
+    // Check against the watchlist
+    const { flagged: watchlistFlagged, reasons: watchlistReasons } =
+      await checkWatchlist(transaction);
+
     // Fetch all rules from the database
     const { rows: rules } = await db.query("SELECT * FROM rules");
 
     // Evaluate transaction against rules
-    const { flagged, reasons } = evaluateTransaction(transaction, rules);
+    const { flagged: rulesFlagged, reasons: ruleReasons } = evaluateTransaction(
+      transaction,
+      rules
+    );
+
+    // Combine results from watchlist and rules
+    const flagged = watchlistFlagged || rulesFlagged;
+    const reasons = [...watchlistReasons, ...ruleReasons];
 
     // Insert the transaction into the database
     await db.query(
