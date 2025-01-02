@@ -19,5 +19,8 @@
     "safe-eval": "^0.4.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.0.0"
   }
 }

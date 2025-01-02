@@ -2,6 +2,7 @@ const db = require("../models/db");
 const Joi = require("joi");
 const { evaluateTransaction } = require("../utils/ruleEngine");
 const { checkWatchlist } = require("../utils/watchlistCheck");
+const logger = require("../utils/logger");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -14,10 +15,12 @@ const transactionSchema = Joi.object({
 
 exports.getTransactions = async (req, res) => {
   try {
+    logger.info("Fetching all transactions");
     const { rows } = await db.query("SELECT * FROM transactions");
     res.status(200).json(rows);
+    logger.info(`Fetched ${rows.length} transactions successfully`);
   } catch (error) {
-    console.error("Error in getTransactions:", error.message);
+    logger.error(`Error in getTransactions: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -25,6 +28,7 @@ exports.getTransactions = async (req, res) => {
 exports.createTransaction = async (req, res) => {
   const { error, value } = transactionSchema.validate(req.body);
   if (error) {
+    logger.warn(`Validation failed: ${error.details[0].message}`);
     return res
       .status(400)
       .json({ success: false, error: error.details[0].message });
@@ -33,19 +37,29 @@ exports.createTransaction = async (req, res) => {
   const transaction = value;
 
   try {
+    logger.info(`Processing transaction: ${transaction.transaction_id}`);
     await db.query("BEGIN");
 
     // Check against the watchlist
     const { flagged: watchlistFlagged, reasons: watchlistReasons } =
       await checkWatchlist(transaction);
+    logger.info(
+      `Watchlist check completed for transaction ${transaction.transaction_id}: flagged=${watchlistFlagged}`
+    );
 
     // Fetch all rules from the database
     const { rows: rules } = await db.query("SELECT * FROM rules");
+    logger.info(
+      `Fetched ${rules.length} rules for transaction ${transaction.transaction_id}`
+    );
 
     // Evaluate transaction against rules
     const { flagged: rulesFlagged, reasons: ruleReasons } = evaluateTransaction(
       transaction,
       rules
+    );
+    logger.info(
+      `Rule evaluation completed for transaction ${transaction.transaction_id}: flagged=${rulesFlagged}`
     );
 
     // Combine results from watchlist and rules
@@ -66,6 +80,11 @@ exports.createTransaction = async (req, res) => {
         flagged,
       ]
     );
+    logger.info(
+      `Transaction ${transaction.transaction_id} ${
+        flagged ? "flagged" : "inserted successfully"
+      }`
+    );
 
     // Insert alerts if flagged
     if (flagged) {
@@ -74,11 +93,17 @@ exports.createTransaction = async (req, res) => {
           `INSERT INTO alerts (transaction_id, reason) VALUES ($1, $2)`,
           [transaction.transaction_id, reason]
         );
+        logger.info(
+          `Alert created for transaction ${transaction.transaction_id}: ${reason}`
+        );
       }
     }
 
     // Commit transaction
     await db.query("COMMIT");
+    logger.info(
+      `Transaction ${transaction.transaction_id} committed successfully`
+    );
 
     res.status(201).json({
       success: true,
@@ -87,7 +112,9 @@ exports.createTransaction = async (req, res) => {
   } catch (error) {
     // Rollback transaction
     await db.query("ROLLBACK");
-    console.error("Error in createTransaction:", error.message);
+    logger.error(
+      `Error in createTransaction for transaction ${transaction.transaction_id}: ${error.message}`
+    );
     if (error.code === "23505") {
       res
         .status(400)
