@@ -3,7 +3,7 @@ const router = express.Router();
 const {
   getTransactions,
   createTransaction,
-} = require("../controllers/transactionController");
+} = require("@controllers/transactionController");
 
 /**
  * @swagger

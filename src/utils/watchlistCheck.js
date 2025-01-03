@@ -1,4 +1,4 @@
-const db = require("../models/db");
+const db = require("@models/db");
 
 const checkWatchlist = async (transaction) => {
   const { rows: watchlist } = await db.query("SELECT * FROM watchlist");

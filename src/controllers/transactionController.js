@@ -1,8 +1,8 @@
-const db = require("../models/db");
+const db = require("@models/db");
 const Joi = require("joi");
-const { evaluateTransaction } = require("../utils/ruleEngine");
-const { checkWatchlist } = require("../utils/watchlistCheck");
-const logger = require("../utils/logger");
+const { evaluateTransaction } = require("@utils/ruleEngine");
+const { checkWatchlist } = require("@utils/watchlistCheck");
+const logger = require("@utils/logger");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),

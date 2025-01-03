@@ -4,7 +4,7 @@ const {
   getAllWatchlistItems,
   addWatchlistItem,
   deleteWatchlistItem,
-} = require("../models/watchlistModel");
+} = require("@models/watchlistModel");
 
 /**
  * @swagger

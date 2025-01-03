@@ -1,6 +1,9 @@
-const app = require('./app');
+require("module-alias/register");
+
+const app = require("./app");
+const logger = require("@utils/logger");
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Regulus MVP listening on port ${PORT}`);
+  logger.info(`Regulus MVP listening on port ${PORT}`);
 });

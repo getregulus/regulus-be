@@ -1,5 +1,5 @@
-const db = require("../models/db");
-const logger = require("../utils/logger"); // Import logger
+const db = require("@models/db");
+const logger = require("@utils/logger");
 
 exports.getAlerts = async (req, res) => {
   try {
