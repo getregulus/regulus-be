@@ -1,64 +1,77 @@
 const db = require("@models/db");
+const pino = require("@utils/logger");
 
-exports.getRules = async (req, res) => {
+// Fetch all rules
+exports.getRules = async () => {
   try {
+    pino.info({ message: "Fetching all rules..." });
     const { rows } = await db.query(
       "SELECT * FROM rules ORDER BY created_at DESC"
     );
-    res.status(200).json(rows);
+    pino.info({ message: "Rules fetched successfully", count: rows.length });
+    return rows;
   } catch (error) {
-    console.error("Error in fetching rules:", error.message);
-    res.status(500).json({ error: "Internal server error." });
+    pino.error({ message: "Error fetching rules", error: error.message });
+    throw new Error("Failed to fetch rules.");
   }
 };
 
-exports.createRule = async (req, res) => {
-  const { rule_name, condition } = req.body;
-
+// Create a new rule
+exports.createRule = async ({ rule_name, condition }) => {
   try {
-    await db.query("INSERT INTO rules (rule_name, condition) VALUES ($1, $2)", [
-      rule_name,
-      condition,
-    ]);
-    res.status(201).json({ message: "Rule created successfully." });
+    pino.info({ message: "Creating rule...", rule_name, condition });
+    const { rows } = await db.query(
+      "INSERT INTO rules (rule_name, condition) VALUES ($1, $2) RETURNING *",
+      [rule_name, condition]
+    );
+    pino.info({ message: "Rule created successfully", rule: rows[0] });
+    return rows[0];
   } catch (error) {
-    console.error("Error in creating rule:", error.message);
-    res.status(500).json({ error: "Internal server error." });
+    if (error.code === "23505") {
+      // PostgreSQL duplicate key error code
+      pino.warn({ message: "Duplicate rule name detected", rule_name });
+      throw new Error("Rule name must be unique.");
+    }
+    pino.error({ message: "Error creating rule", error: error.message });
+    throw new Error("Failed to create rule.");
   }
 };
 
-exports.updateRule = async (req, res) => {
-  const { id } = req.params;
-  const { rule_name, condition } = req.body;
-
+// Update an existing rule
+exports.updateRule = async (id, { rule_name, condition }) => {
   try {
+    pino.info({ message: "Updating rule...", id, rule_name, condition });
     const { rowCount } = await db.query(
-      "UPDATE rules SET rule_name = $1, condition = $2 WHERE id = $3",
+      "UPDATE rules SET rule_name = $1, condition = $2 WHERE id = $3 RETURNING *",
       [rule_name, condition, id]
     );
     if (rowCount === 0) {
-      return res.status(404).json({ error: "Rule not found." });
+      pino.warn({ message: "Rule not found during update", id });
+      throw new Error("Rule not found.");
     }
-    res.status(200).json({ message: "Rule updated successfully." });
+    pino.info({ message: "Rule updated successfully", id, rule_name });
+    return true;
   } catch (error) {
-    console.error("Error in updating rule:", error.message);
-    res.status(500).json({ error: "Internal server error." });
+    pino.error({ message: "Error updating rule", id, error: error.message });
+    throw new Error(error.message);
   }
 };
 
-exports.deleteRule = async (req, res) => {
-  const { id } = req.params;
-
+// Delete a rule
+exports.deleteRule = async (id) => {
   try {
+    pino.info({ message: "Deleting rule...", id });
     const { rowCount } = await db.query("DELETE FROM rules WHERE id = $1", [
       id,
     ]);
     if (rowCount === 0) {
-      return res.status(404).json({ error: "Rule not found." });
+      pino.warn({ message: "Rule not found during delete", id });
+      throw new Error("Rule not found.");
     }
-    res.status(200).json({ message: "Rule deleted successfully." });
+    pino.info({ message: "Rule deleted successfully", id });
+    return true;
   } catch (error) {
-    console.error("Error in deleting rule:", error.message);
-    res.status(500).json({ error: "Internal server error." });
+    pino.error({ message: "Error deleting rule", id, error: error.message });
+    throw new Error(error.message);
   }
 };

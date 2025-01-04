@@ -22,6 +22,7 @@ const alertRoutes = require("./routes/alerts");
 const ruleRoutes = require("./routes/rules");
 const watchlistRoutes = require("./routes/watchlist");
 const authRoutes = require("@routes/auth");
+const auditRoutes = require("@routes/audit");
 
 // Routes
 app.use("/transactions", transactionRoutes);
@@ -29,6 +30,7 @@ app.use("/alerts", alertRoutes);
 app.use("/rules", ruleRoutes);
 app.use("/watchlist", watchlistRoutes);
 app.use("/auth", authRoutes);
+app.use("/audit_logs", auditRoutes);
 
 // Default Route
 app.get("/", (req, res) => {
