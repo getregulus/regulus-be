@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { authenticate, authorize } = require("@middleware/auth");
 const {
   getTransactions,
   createTransaction,
@@ -85,5 +86,58 @@ router.get("/", getTransactions);
  *         description: Validation error.
  */
 router.post("/", createTransaction);
+
+/**
+ * @swagger
+ * /transactions:
+ *   get:
+ *     summary: Get all transactions
+ *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of transactions.
+ */
+router.get("/", authenticate, authorize(["auditor", "admin"]), getTransactions);
+
+/**
+ * @swagger
+ * /transactions:
+ *   post:
+ *     summary: Create a new transaction
+ *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               transaction_id:
+ *                 type: string
+ *               user_id:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               currency:
+ *                 type: string
+ *               country:
+ *                 type: string
+ *               timestamp:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       201:
+ *         description: Transaction created.
+ */
+router.post(
+  "/",
+  authenticate,
+  authorize(["auditor", "admin"]),
+  createTransaction
+);
 
 module.exports = router;
