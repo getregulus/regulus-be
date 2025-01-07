@@ -1,0 +1,25 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing dependencies...
+      - apt-get update -y
+      - apt-get install -y docker.io
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com
+  build:
+    commands:
+      - echo Building the Docker image...
+      - docker build -t regulus-prod .
+      - docker tag regulus-prod:latest 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus-prod:latest
+  post_build:
+    commands:
+      - echo Pushing the Docker image to Amazon ECR...
+      - docker push 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus-prod:latest
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: yes
