@@ -22,7 +22,7 @@ phases:
       - echo Deploying the Docker container to EC2 via SSM...
       - >
         aws ssm send-command
-        --instance-ids "<INSTANCE_ID>"
+        --instance-ids "i-064ffb69ac5f0f92e"
         --document-name "AWS-RunShellScript"
         --comment "Deploy Docker container"
         --parameters '{"commands":["aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com",
