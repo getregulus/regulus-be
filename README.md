@@ -11,7 +11,7 @@ Regulus is a modular and customizable Anti-Money Laundering (AML) monitoring sys
 - **API Documentation**: Comprehensive Swagger integration at `/api-docs`.
 - **Logging**: Structured request and response logging with `pino`.
 
-## **Tech Stack**
+## **Tech Stack** 
 
 - **Backend**: Node.js (Express)
 - **Database**: PostgreSQL
