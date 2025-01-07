@@ -13,12 +13,12 @@ phases:
   build:
     commands:
       - echo Building the Docker image...
-      - docker build -t regulus-prod .
-      - docker tag regulus-prod:latest 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus-prod:latest
+      - docker build -t regulus .
+      - docker tag regulus:latest 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest
   post_build:
     commands:
       - echo Pushing the Docker image to Amazon ECR...
-      - docker push 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus-prod:latest
+      - docker push 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest
 artifacts:
   files:
     - '**/*'
