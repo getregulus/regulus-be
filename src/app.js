@@ -34,7 +34,7 @@ app.use("/audit_logs", auditRoutes);
 
 // Default Route
 app.get("/", (req, res) => {
-  res.send({ message: "Hello from Regulus MVP!!" });
+  res.send({ message: "Hello from Regulus MVP!!!!" });
 });
 
 // Swagger middleware
