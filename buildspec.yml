@@ -13,7 +13,7 @@ phases:
   build:
     commands:
       - echo "Building the Docker image..."
-      - docker build -t regulus .
+      - docker build --no-cache -t regulus .
       - docker tag regulus:latest 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest
   post_build:
     commands:
