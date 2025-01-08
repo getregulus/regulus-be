@@ -3,10 +3,17 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo "Fetching deployment config from Secrets Manager..."
-      - DEPLOYMENT_CONFIG=$(aws secretsmanager get-secret-value --secret-id regulus/deployment-config --query SecretString --output text)
-      - INSTANCE_ID=$(echo $DEPLOYMENT_CONFIG | jq -r '.INSTANCE_ID')
-      - REGION=$(echo $DEPLOYMENT_CONFIG | jq -r '.REGION')
+      - echo "Fetching individual secrets from Secrets Manager..."
+      - API_URL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/API_URL --query SecretString --output text)
+      - DATABASE_URL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/DATABASE_URL --query SecretString --output text)
+      - INSTANCE_ID=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/INSTANCE_ID --query SecretString --output text)
+      - REGION=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/REGION --query SecretString --output text)
+      - JWT_EXPIRATION=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/JWT_EXPIRATION --query SecretString --output text)
+      - JWT_SECRET=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/JWT_SECRET --query SecretString --output text)
+      - LOG_LEVEL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/LOG_LEVEL --query SecretString --output text)
+      - NODE_ENV=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/NODE_ENV --query SecretString --output text)
+      - echo "INSTANCE_ID=$INSTANCE_ID"
+      - echo "REGION=$REGION"
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com
   build:
