@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  username  String     @unique
+  password  String
+  role      String
+  createdAt DateTime   @default(now())
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id             Int      @id @default(autoincrement())
+  transaction_id String   @unique
+  user_id        String
+  amount         Float
+  currency       String
+  country        String
+  timestamp      DateTime
+  flagged        Boolean  @default(false)
+  alerts         Alert[]
+
+  @@map("transactions")
+}
+
+model Alert {
+  id             Int         @id @default(autoincrement())
+  transaction_id String
+  reason         String
+  flagged_at     DateTime    @default(now())
+  transaction    Transaction @relation(fields: [transaction_id], references: [transaction_id])
+
+  @@map("alerts")
+}
+
+model Watchlist {
+  id       Int      @id @default(autoincrement())
+  type     String
+  value    String
+  added_at DateTime @default(now())
+
+  @@map("watchlist")
+}
+
+model Rule {
+  id         Int      @id @default(autoincrement())
+  rule_name  String   @unique
+  condition  String
+  created_at DateTime @default(now())
+
+  @@map("rules")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  action      String
+  target_id   Int?
+  target_type String?
+  timestamp   DateTime @default(now())
+  user        User     @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}

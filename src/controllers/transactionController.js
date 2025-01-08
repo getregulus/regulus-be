@@ -1,4 +1,4 @@
-const db = require("@models/db");
+const prisma = require("@utils/prisma");
 const Joi = require("joi");
 const { evaluateTransaction } = require("@utils/ruleEngine");
 const { checkWatchlist } = require("@utils/watchlistCheck");
@@ -13,18 +13,20 @@ const transactionSchema = Joi.object({
   timestamp: Joi.date().required(),
 });
 
+// Fetch all transactions
 exports.getTransactions = async (req, res) => {
   try {
     logger.info("Fetching all transactions");
-    const { rows } = await db.query("SELECT * FROM transactions");
-    res.status(200).json(rows);
-    logger.info(`Fetched ${rows.length} transactions successfully`);
+    const transactions = await prisma.transaction.findMany();
+    res.status(200).json(transactions);
+    logger.info(`Fetched ${transactions.length} transactions successfully`);
   } catch (error) {
     logger.error(`Error in getTransactions: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
+// Create a new transaction
 exports.createTransaction = async (req, res) => {
   const { error, value } = transactionSchema.validate(req.body);
   if (error) {
@@ -38,69 +40,66 @@ exports.createTransaction = async (req, res) => {
 
   try {
     logger.info(`Processing transaction: ${transaction.transaction_id}`);
-    await db.query("BEGIN");
 
-    // Check against the watchlist
-    const { flagged: watchlistFlagged, reasons: watchlistReasons } =
-      await checkWatchlist(transaction);
-    logger.info(
-      `Watchlist check completed for transaction ${transaction.transaction_id}: flagged=${watchlistFlagged}`
-    );
+    // Start a Prisma transaction
+    await prisma.$transaction(async (tx) => {
+      // Check against the watchlist
+      const { flagged: watchlistFlagged, reasons: watchlistReasons } =
+        await checkWatchlist(transaction);
+      logger.info(
+        `Watchlist check completed for transaction ${transaction.transaction_id}: flagged=${watchlistFlagged}`
+      );
 
-    // Fetch all rules from the database
-    const { rows: rules } = await db.query("SELECT * FROM rules");
-    logger.info(
-      `Fetched ${rules.length} rules for transaction ${transaction.transaction_id}`
-    );
+      // Fetch all rules from the database
+      const rules = await tx.rule.findMany();
+      logger.info(
+        `Fetched ${rules.length} rules for transaction ${transaction.transaction_id}`
+      );
 
-    // Evaluate transaction against rules
-    const { flagged: rulesFlagged, reasons: ruleReasons } = evaluateTransaction(
-      transaction,
-      rules
-    );
-    logger.info(
-      `Rule evaluation completed for transaction ${transaction.transaction_id}: flagged=${rulesFlagged}`
-    );
+      // Evaluate transaction against rules
+      const { flagged: rulesFlagged, reasons: ruleReasons } =
+        evaluateTransaction(transaction, rules);
+      logger.info(
+        `Rule evaluation completed for transaction ${transaction.transaction_id}: flagged=${rulesFlagged}`
+      );
 
-    // Combine results from watchlist and rules
-    const flagged = watchlistFlagged || rulesFlagged;
-    const reasons = [...watchlistReasons, ...ruleReasons];
+      // Combine results from watchlist and rules
+      const flagged = watchlistFlagged || rulesFlagged;
+      const reasons = [...watchlistReasons, ...ruleReasons];
 
-    // Insert the transaction into the database
-    await db.query(
-      `INSERT INTO transactions (transaction_id, user_id, amount, currency, country, timestamp, flagged)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        transaction.transaction_id,
-        transaction.user_id,
-        transaction.amount,
-        transaction.currency,
-        transaction.country,
-        transaction.timestamp,
-        flagged,
-      ]
-    );
-    logger.info(
-      `Transaction ${transaction.transaction_id} ${
-        flagged ? "flagged" : "inserted successfully"
-      }`
-    );
+      // Insert the transaction
+      await tx.transaction.create({
+        data: {
+          transaction_id: transaction.transaction_id,
+          user_id: transaction.user_id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          country: transaction.country,
+          timestamp: transaction.timestamp,
+          flagged,
+        },
+      });
+      logger.info(
+        `Transaction ${transaction.transaction_id} ${
+          flagged ? "flagged" : "inserted successfully"
+        }`
+      );
 
-    // Insert alerts if flagged
-    if (flagged) {
-      for (const reason of reasons) {
-        await db.query(
-          `INSERT INTO alerts (transaction_id, reason) VALUES ($1, $2)`,
-          [transaction.transaction_id, reason]
-        );
+      // Insert alerts if flagged
+      if (flagged) {
+        const alertData = reasons.map((reason) => ({
+          transaction_id: transaction.transaction_id,
+          reason,
+        }));
+        await tx.alert.createMany({
+          data: alertData,
+        });
         logger.info(
-          `Alert created for transaction ${transaction.transaction_id}: ${reason}`
+          `Alerts created for transaction ${transaction.transaction_id}`
         );
       }
-    }
+    });
 
-    // Commit transaction
-    await db.query("COMMIT");
     logger.info(
       `Transaction ${transaction.transaction_id} committed successfully`
     );
@@ -110,12 +109,11 @@ exports.createTransaction = async (req, res) => {
       message: flagged ? "Transaction flagged!" : "Transaction created!",
     });
   } catch (error) {
-    // Rollback transaction
-    await db.query("ROLLBACK");
     logger.error(
       `Error in createTransaction for transaction ${transaction.transaction_id}: ${error.message}`
     );
-    if (error.code === "23505") {
+    if (error.code === "P2002") {
+      // Prisma unique constraint error code
       res
         .status(400)
         .json({ success: false, error: "Duplicate transaction ID." });

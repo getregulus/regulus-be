@@ -1,4 +1,4 @@
-const db = require("@models/db");
+const prisma = require('@utils/prisma');
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const logger = require("@utils/logger");
@@ -19,10 +19,9 @@ exports.login = async (req, res) => {
     logger.info(`Login attempt for username: ${username}`);
 
     // Fetch user from the database
-    const { rows } = await db.query("SELECT * FROM users WHERE username = $1", [
-      username,
-    ]);
-    const user = rows[0];
+    const user = await prisma.user.findUnique({
+      where: { username },
+    });
 
     if (!user) {
       logger.warn(`Invalid login: username ${username} not found`);
@@ -65,14 +64,15 @@ exports.register = async (req, res) => {
   }
 
   try {
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert user into the database
-    await db.query(
-      "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
-      [username, hashedPassword, role]
-    );
+    await prisma.user.create({
+      data: {
+        username,
+        password: hashedPassword,
+        role,
+      },
+    });
 
     logger.info(`User registered: ${username} with role ${role}`);
     res.status(201).json({ message: "User registered successfully." });
