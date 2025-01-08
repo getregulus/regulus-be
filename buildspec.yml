@@ -1,15 +1,14 @@
 version: 0.2
 
 phases:
-  install:
-    commands:
-      - echo "Installing dependencies..."
-      - apt-get update -y
-      - apt-get install -y docker.io
   pre_build:
     commands:
+      - echo "Fetching deployment config from Secrets Manager..."
+      - DEPLOYMENT_CONFIG=$(aws secretsmanager get-secret-value --secret-id regulus/deployment-config --query SecretString --output text)
+      - INSTANCE_ID=$(echo $DEPLOYMENT_CONFIG | jq -r '.INSTANCE_ID')
+      - REGION=$(echo $DEPLOYMENT_CONFIG | jq -r '.REGION')
       - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com
   build:
     commands:
       - echo "Building the Docker image..."
@@ -17,22 +16,29 @@ phases:
       - docker tag regulus:latest 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest
   post_build:
     commands:
-      - echo "Pushing the Docker image to Amazon ECR..."
-      - docker push 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest
-      - echo "Deploying the Docker container to EC2 via SSM..."
-      - |
-        aws ssm send-command \
-          --instance-ids "i-064ffb69ac5f0f92e" \
-          --document-name "AWS-RunShellScript" \
-          --comment "Deploy Docker container" \
-          --parameters '{"commands":["aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com",
-                                      "docker pull 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest",
-                                      "docker stop regulus-container || true",
-                                      "docker rm regulus-container || true",
-                                      "docker run -d --name regulus-container -p 3000:3000 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest"]}' \
-          --region eu-west-1
+        - echo "Pushing the Docker image to Amazon ECR..." 
+        - echo "Fetching EC2 Public IP..."
+        - PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text --region $REGION)
+        - echo "Public IP is $PUBLIC_IP"
+        - API_URL=http://$PUBLIC_IP:3000
+        - echo "API_URL is $API_URL"
+        - echo "Deploying the Docker container to EC2 via SSM..."
+        - |
+          aws ssm send-command \
+            --instance-ids $INSTANCE_ID \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy Docker container" \
+            --parameters '{"commands":["aws ecr get-login-password --region '$REGION' | docker login --username AWS --password-stdin 841467961522.dkr.ecr.eu-west-1.amazonaws.com",
+                                        "docker pull 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest",
+                                        "docker stop regulus-container || true",
+                                        "docker rm regulus-container || true",
+                                        "docker run -d --name regulus-container -p 3000:3000 -e API_URL='$API_URL' 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest"]}' \
+            --region $REGION
 
 artifacts:
   files:
-    - '**/*'
+    - "**/*"
   discard-paths: yes
