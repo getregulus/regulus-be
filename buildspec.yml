@@ -3,15 +3,15 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo "Fetching individual secrets from Secrets Manager..."
-      - API_URL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/API_URL --query SecretString --output text)
-      - DATABASE_URL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/DATABASE_URL --query SecretString --output text)
-      - INSTANCE_ID=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/INSTANCE_ID --query SecretString --output text)
-      - REGION=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/REGION --query SecretString --output text)
-      - JWT_EXPIRATION=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/JWT_EXPIRATION --query SecretString --output text)
-      - JWT_SECRET=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/JWT_SECRET --query SecretString --output text)
-      - LOG_LEVEL=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/LOG_LEVEL --query SecretString --output text)
-      - NODE_ENV=$(aws secretsmanager get-secret-value --secret-id /regulus/prod/NODE_ENV --query SecretString --output text)
+      - echo "Fetching parameters from Parameter Store..."
+      - API_URL=$(aws ssm get-parameter --name /regulus/prod/API_URL --with-decryption --query Parameter.Value --output text)
+      - DATABASE_URL=$(aws ssm get-parameter --name /regulus/prod/DATABASE_URL --with-decryption --query Parameter.Value --output text)
+      - INSTANCE_ID=$(aws ssm get-parameter --name /regulus/prod/INSTANCE_ID --with-decryption --query Parameter.Value --output text)
+      - REGION=$(aws ssm get-parameter --name /regulus/prod/REGION --with-decryption --query Parameter.Value --output text)
+      - JWT_EXPIRATION=$(aws ssm get-parameter --name /regulus/prod/JWT_EXPIRATION --with-decryption --query Parameter.Value --output text)
+      - JWT_SECRET=$(aws ssm get-parameter --name /regulus/prod/JWT_SECRET --with-decryption --query Parameter.Value --output text)
+      - LOG_LEVEL=$(aws ssm get-parameter --name /regulus/prod/LOG_LEVEL --with-decryption --query Parameter.Value --output text)
+      - NODE_ENV=$(aws ssm get-parameter --name /regulus/prod/NODE_ENV --with-decryption --query Parameter.Value --output text)
       - echo "INSTANCE_ID=$INSTANCE_ID"
       - echo "REGION=$REGION"
       - echo "Logging in to Amazon ECR..."
