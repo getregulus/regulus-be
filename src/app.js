@@ -10,7 +10,7 @@ app.use(requestLogger);
 
 app.use(
   cors({
-    origin: "http://localhost:3000", // Allow requests only from this origin
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
     methods: ["GET", "POST", "PUT", "DELETE"], // Allowed HTTP methods
     allowedHeaders: ["Content-Type", "Authorization"], // Allowed headers
   })
