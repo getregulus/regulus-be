@@ -13,6 +13,11 @@ phases:
       - LOG_LEVEL=$(aws ssm get-parameter --name /regulus/prod/LOG_LEVEL --with-decryption --query Parameter.Value --output text)
       - NODE_ENV=$(aws ssm get-parameter --name /regulus/prod/NODE_ENV --with-decryption --query Parameter.Value --output text)
       - CORS_ORIGIN=$(aws ssm get-parameter --name /regulus/prod/CORS_ORIGIN --with-decryption --query Parameter.Value --output text)
+      - DB_HOST=$(aws ssm get-parameter --name /regulus/prod/DB_HOST --with-decryption --query Parameter.Value --output text)
+      - DB_PORT=$(aws ssm get-parameter --name /regulus/prod/DB_PORT --with-decryption --query Parameter.Value --output text)
+      - DB_USER=$(aws ssm get-parameter --name /regulus/prod/DB_USER --with-decryption --query Parameter.Value --output text)
+      - DB_PASS=$(aws ssm get-parameter --name /regulus/prod/DB_PASS --with-decryption --query Parameter.Value --output text)
+      - DB_NAME=$(aws ssm get-parameter --name /regulus/prod/DB_NAME --with-decryption --query Parameter.Value --output text)
       - echo "Fetched parameters successfully!"
       - echo "INSTANCE_ID=$INSTANCE_ID"
       - echo "REGION=$REGION"
