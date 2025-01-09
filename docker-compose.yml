@@ -16,9 +16,6 @@ services:
   regulus-aml:
     build: .
     container_name: regulus-aml
-    ports:
-      - "3000:3000"
-      - "5555:5555"
     depends_on:
       - db
     env_file:
@@ -30,9 +27,13 @@ services:
       DB_NAME: regulus
       DB_PORT: 5432
       PORT: 3000
+    ports:
+      - "3000:3000"
+      - "5555:5555"
     volumes:
-      - .:/app # Maps the local project directory to /app inside the container
-      - /app/node_modules # Ensures node_modules stays container-specific to avoid host conflict
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - /app/node_modules
 
 volumes:
   db_data:
