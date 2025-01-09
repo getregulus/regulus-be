@@ -55,7 +55,7 @@ phases:
                                       "docker pull 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest",
                                       "docker stop regulus-container || true",
                                       "docker rm regulus-container || true",
-                                      "docker run -d --name regulus-container -p 3000:3000 -e API_URL='$API_URL' -e DATABASE_URL='$DATABASE_URL' -e JWT_EXPIRATION='$JWT_EXPIRATION' -e JWT_SECRET='$JWT_SECRET' -e LOG_LEVEL='$LOG_LEVEL' -e NODE_ENV='$NODE_ENV' -e CORS_ORIGIN='$CORS_ORIGIN' 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest"]}' \
+                                      "docker run -d --name regulus-container -p 3000:3000 -e API_URL='$API_URL' -e DATABASE_URL='$DATABASE_URL' -e DB_HOST='$DB_HOST' -e DB_PORT='$DB_PORT' -e DB_USER='$DB_USER' -e DB_PASS='$DB_PASS' -e DB_NAME='$DB_NAME' -e JWT_EXPIRATION='$JWT_EXPIRATION' -e JWT_SECRET='$JWT_SECRET' -e LOG_LEVEL='$LOG_LEVEL' -e NODE_ENV='$NODE_ENV' -e CORS_ORIGIN='$CORS_ORIGIN' 841467961522.dkr.ecr.eu-west-1.amazonaws.com/regulus:latest"]}' \
           --region $REGION
       - echo "Deployment initiated successfully!"
 
