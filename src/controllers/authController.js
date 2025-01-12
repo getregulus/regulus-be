@@ -1,4 +1,4 @@
-const prisma = require('@utils/prisma');
+const prisma = require("@utils/prisma");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const logger = require("@utils/logger");
@@ -79,5 +79,23 @@ exports.register = async (req, res) => {
   } catch (error) {
     logger.error(`Error registering user ${username}: ${error.message}`);
     res.status(500).json({ error: "Internal server error." });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    logger.info("Fetching user data for authenticated request.");
+
+    const user = req.user;
+    if (!user) {
+      logger.warn("Unauthorized access attempt.");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    logger.info(`User data fetched successfully: ${user.email}`);
+    res.status(200).json({ user });
+  } catch (error) {
+    logger.error(`Error fetching user data: ${error.message}`);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
