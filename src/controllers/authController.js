@@ -6,55 +6,48 @@ const Joi = require("joi");
 
 // Validation schema for user registration
 const registerSchema = Joi.object({
-  username: Joi.string().min(3).max(50).required(),
+  name: Joi.string().min(3).max(50).required(),
+  email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  role: Joi.string().valid("admin", "auditor").required(),
+  role: Joi.string().valid("admin", "auditor").optional(),
 });
 
 // User login
 exports.login = async (req, res) => {
-  const { username, password } = req.body;
+  const { email, password } = req.body;
 
   try {
-    logger.info(`Login attempt for username: ${username}`);
-
-    // Fetch user from the database
-    const user = await prisma.user.findUnique({
-      where: { username },
-    });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      logger.warn(`Invalid login: username ${username} not found`);
-      return res.status(401).json({ error: "Invalid username or password." });
+      return res.status(404).json({ error: "User not found." });
     }
 
-    // Compare passwords
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      logger.warn(`Invalid login: incorrect password for username ${username}`);
-      return res.status(401).json({ error: "Invalid username or password." });
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid credentials." });
     }
 
-    // Generate JWT
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRATION || "1h" }
     );
 
-    logger.info(`Login successful for username: ${username}`);
-    res.status(200).json({ token });
+    res.status(200).json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name },
+    });
   } catch (error) {
-    logger.error(`Error logging in for username ${username}: ${error.message}`);
+    logger.error(`Error during login: ${error.message}`);
     res.status(500).json({ error: "Internal server error." });
   }
 };
 
 // User registration
 exports.register = async (req, res) => {
-  const { username, password, role } = req.body;
-
-  // Validate input
+  // Validate request body
   const { error } = registerSchema.validate(req.body);
   if (error) {
     logger.warn(
@@ -63,21 +56,47 @@ exports.register = async (req, res) => {
     return res.status(400).json({ error: error.details[0].message });
   }
 
+  const { name, email, password, role } = req.body;
+
   try {
+    // Check if the user already exists
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      logger.warn(`Attempt to register with an existing email: ${email}`);
+      return res.status(409).json({ error: "User already exists." });
+    }
+
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
-        username,
+        name,
+        email,
         password: hashedPassword,
-        role,
+        role: role || "auditor", // Default to "auditor" if no role provided
       },
     });
 
-    logger.info(`User registered: ${username} with role ${role}`);
-    res.status(201).json({ message: "User registered successfully." });
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRATION || "1h" }
+    );
+
+    logger.info(`User registered successfully: ${email}`);
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
-    logger.error(`Error registering user ${username}: ${error.message}`);
+    logger.error(`Error during registration: ${error.message}`);
     res.status(500).json({ error: "Internal server error." });
   }
 };
@@ -96,6 +115,6 @@ exports.getMe = async (req, res) => {
     res.status(200).json({ user });
   } catch (error) {
     logger.error(`Error fetching user data: ${error.message}`);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error." });
   }
 };

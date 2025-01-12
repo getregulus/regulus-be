@@ -9,10 +9,11 @@ const {
 
 /**
  * @swagger
- * /auth/login:
+ * /auth/register:
  *   post:
- *     summary: User login
- *     tags: [Auth]
+ *     summary: Register a new user
+ *     tags:
+ *       - Auth
  *     requestBody:
  *       required: true
  *       content:
@@ -20,15 +21,21 @@ const {
  *           schema:
  *             type: object
  *             properties:
- *               username:
+ *               name:
  *                 type: string
- *                 example: admin_user
+ *                 example: "John Doe"
+ *                 description: Full name of the user
+ *               email:
+ *                 type: string
+ *                 example: "john.doe@example.com"
+ *                 description: Email address of the user
  *               password:
  *                 type: string
- *                 example: admin_password
+ *                 example: "password123"
+ *                 description: Password for the new account
  *     responses:
- *       200:
- *         description: Login successful.
+ *       201:
+ *         description: User registered successfully.
  *         content:
  *           application/json:
  *             schema:
@@ -36,17 +43,31 @@ const {
  *               properties:
  *                 token:
  *                   type: string
- *                   example: "your.jwt.token"
- *       401:
- *         description: Invalid credentials.
+ *                   example: "your-jwt-token"
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     name:
+ *                       type: string
+ *                       example: "John Doe"
+ *                     email:
+ *                       type: string
+ *                       example: "john.doe@example.com"
+ *       400:
+ *         description: Validation error or missing fields.
+ *       500:
+ *         description: Internal server error.
  */
-router.post("/login", login);
+router.post("/register", register);
 
 /**
  * @swagger
- * /auth/register:
+ * /auth/register/admin:
  *   post:
- *     summary: User registration (Admin Only)
+ *     summary: Register a new user as admin
  *     tags:
  *       - Auth
  *     security:
@@ -60,27 +81,79 @@ router.post("/login", login);
  *             properties:
  *               username:
  *                 type: string
- *                 example: new_admin
+ *                 example: "admin_user"
+ *                 description: The username for the new user
  *               password:
  *                 type: string
- *                 example: admin_password
+ *                 example: "admin123"
+ *                 description: The password for the new user
  *               role:
  *                 type: string
- *                 enum:
- *                   - admin
- *                   - auditor
- *                 example: admin
+ *                 example: "admin"
+ *                 description: Role of the user (e.g., "admin", "auditor")
  *     responses:
  *       201:
  *         description: User registered successfully.
- *       400:
- *         description: Validation error.
+ *       401:
+ *         description: Unauthorized. No token provided or invalid token.
  *       403:
- *         description: Access forbidden. Insufficient privileges.
+ *         description: Forbidden. The user is not authorized to perform this action.
  *       500:
  *         description: Internal server error.
  */
-router.post("/register", authenticate, authorize(["admin"]), register);
+router.post("/register/admin", authenticate, authorize(["admin"]), register);
+
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Log in an existing user
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: "existing_user"
+ *                 description: The username of the user
+ *               password:
+ *                 type: string
+ *                 example: "password123"
+ *                 description: The password of the user
+ *     responses:
+ *       200:
+ *         description: Login successful. Returns a JWT token and user data.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   example: "your-jwt-token"
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     username:
+ *                       type: string
+ *                       example: "existing_user"
+ *                     role:
+ *                       type: string
+ *                       example: "auditor"
+ *       401:
+ *         description: Unauthorized. Invalid credentials provided.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post("/login", login);
 
 /**
  * @swagger
