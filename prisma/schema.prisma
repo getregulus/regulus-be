@@ -8,19 +8,45 @@ datasource db {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  username  String?    @unique // Optional since Google users might not have a username
-  email     String?    @unique // Email is unique for identifying Google-authenticated users
-  password  String?    // Optional for users authenticated via Google
-  googleId  String?    @unique // Unique identifier for Google users (sub from Google token)
-  name      String?    // Full name of the user (from Google payload)
-  role      String
-  createdAt DateTime   @default(now())
-  auditLogs AuditLog[]
+  id              Int           @id @default(autoincrement())
+  email           String        @unique
+  name            String
+  password        String?
+  googleId        String?       @unique
+  role            String        @default("admin")
+  permissions     String        @default("[\"read\",\"write\"]")
+  lastLogin       DateTime?
+  createdAt       DateTime      @default(now())
+  twoFactorEnabled Boolean      @default(false)
+  preferences     Preferences?
+  plan           Plan?
+  auditLogs      AuditLog[]   
 
-  @@map("users")
+  @@map("users")  
 }
 
+model Preferences {
+  id                 Int      @id @default(autoincrement())
+  userId            Int      @unique
+  user              User     @relation(fields: [userId], references: [id])
+  emailNotifications Boolean  @default(true)
+
+  @@map("preferences")
+}
+
+model Plan {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @unique
+  user       User      @relation(fields: [userId], references: [id])
+  type       String    @default("free")
+  status     String    @default("active")
+  expiryDate DateTime?
+  features   String    @default("[]")
+
+  @@map("plans")
+}
+
+// Keep all existing models unchanged
 model Transaction {
   id             Int      @id @default(autoincrement())
   transaction_id String   @unique

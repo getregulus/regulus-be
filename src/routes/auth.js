@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
-const { login, register } = require("@controllers/authController");
+const { login, register, getMe, updateMe } = require("@controllers/authController");
 const {
   googleRegister,
   googleLogin,
@@ -297,8 +297,52 @@ router.post("/google-login", googleLogin);
  *                   type: string
  *                   example: "Internal server error."
  */
-router.get("/me", authenticate, (req, res) => {
-  res.status(200).json({ user: req.user });
-});
+router.get("/me", authenticate, getMe);
+
+/**
+ * @swagger
+ * /auth/me:
+ *   put:
+ *     summary: Update authenticated user details
+ *     tags:
+ *       - Auth
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "John Doe"
+ *               email:
+ *                 type: string
+ *                 example: "john@example.com"
+ *               preferences:
+ *                 type: object
+ *                 properties:
+ *                   notifications:
+ *                     type: object
+ *                     properties:
+ *                       email:
+ *                         type: boolean
+ *               twoFactorEnabled:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Email already exists
+ *       500:
+ *         description: Internal server error
+ */
+router.put("/me", authenticate, updateMe);
 
 module.exports = router;

@@ -98,7 +98,15 @@ exports.googleLogin = async (req, res) => {
     );
 
     logger.info(`JWT generated successfully for user: ${email}`);
-    res.status(200).json({ token });
+    res.status(200).json({ 
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      }
+    });
   } catch (error) {
     logger.error(`Google login failed: ${error.message}`);
     res.status(401).json({ error: "Unauthorized" });
