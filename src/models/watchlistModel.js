@@ -9,11 +9,11 @@ const getAllWatchlistItems = async () => {
 };
 
 // Add a new item to the watchlist
-const addWatchlistItem = async (type, value) => {
-  await db.query("INSERT INTO watchlist (type, value) VALUES ($1, $2)", [
-    type,
-    value,
-  ]);
+const addWatchlistItem = async (type, value, organizationId) => {
+  await db.query(
+    "INSERT INTO watchlist (type, value, organizationid) VALUES ($1, $2, $3)",
+    [type, value, organizationId]
+  );
 };
 
 // Delete an item from the watchlist
