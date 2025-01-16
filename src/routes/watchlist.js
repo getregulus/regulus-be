@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { authenticate } = require("@middleware/auth");
+const { organizationContext } = require("@middleware/organization");
 const {
   getAllWatchlistItems,
   addWatchlistItem,
@@ -10,15 +12,24 @@ const {
  * @swagger
  * /watchlist:
  *   get:
- *     summary: Get all watchlist items
+ *     summary: Get all watchlist items for an organization
  *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     responses:
  *       200:
- *         description: List of all watchlist items.
+ *         description: List of watchlist items
  */
-router.get("/", async (req, res) => {
+router.get("/", authenticate, organizationContext, async (req, res) => {
   try {
-    const items = await getAllWatchlistItems();
+    const items = await getAllWatchlistItems(req.organizationId);
     res.status(200).json(items);
   } catch (error) {
     console.error("Error in fetching watchlist items:", error.message);
@@ -30,8 +41,17 @@ router.get("/", async (req, res) => {
  * @swagger
  * /watchlist:
  *   post:
- *     summary: Add a new item to the watchlist
+ *     summary: Add a new watchlist item
  *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     requestBody:
  *       required: true
  *       content:
@@ -49,7 +69,7 @@ router.get("/", async (req, res) => {
  *       201:
  *         description: Watchlist item added successfully.
  */
-router.post("/", async (req, res) => {
+router.post("/", authenticate, organizationContext, async (req, res) => {
   const { type, value } = req.body;
 
   if (!type || !value) {
@@ -59,7 +79,7 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    await addWatchlistItem(type, value);
+    await addWatchlistItem(type, value, req.organizationId);
     res
       .status(201)
       .json({ success: true, message: "Watchlist item added successfully!" });
@@ -73,9 +93,16 @@ router.post("/", async (req, res) => {
  * @swagger
  * /watchlist/{id}:
  *   delete:
- *     summary: Delete a watchlist item by ID
+ *     summary: Delete a watchlist item
  *     tags: [Watchlist]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
  *       - in: path
  *         name: id
  *         required: true
@@ -88,11 +115,11 @@ router.post("/", async (req, res) => {
  *       404:
  *         description: Watchlist item not found.
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authenticate, organizationContext, async (req, res) => {
   const { id } = req.params;
 
   try {
-    const deleted = await deleteWatchlistItem(id);
+    const deleted = await deleteWatchlistItem(id, req.organizationId);
     if (!deleted) {
       return res
         .status(404)

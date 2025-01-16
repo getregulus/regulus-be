@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
+const { organizationContext } = require('@middleware/organization');
 const {
   getTransactions,
   createTransaction,
@@ -10,42 +11,33 @@ const {
  * @swagger
  * /transactions:
  *   get:
- *     summary: Get all transactions
+ *     summary: Get all transactions for an organization
  *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     responses:
  *       200:
- *         description: List of all transactions.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   transaction_id:
- *                     type: string
- *                     example: txn_0001
- *                   user_id:
- *                     type: string
- *                     example: user_001
- *                   amount:
- *                     type: number
- *                     example: 15000
- *                   currency:
- *                     type: string
- *                     example: USD
- *                   country:
- *                     type: string
- *                     example: US
- *                   timestamp:
- *                     type: string
- *                     format: date-time
- *                     example: 2025-01-01T10:00:00Z
- *                   flagged:
- *                     type: boolean
- *                     example: true
+ *         description: List of transactions
+ *       403:
+ *         description: Not authorized
+ *       500:
+ *         description: Internal server error
  */
-router.get("/", getTransactions);
+router.get("/", authenticate, organizationContext, authorize(["auditor", "admin"]), async (req, res) => {
+  try {
+    const transactions = await getTransactions(req, res);
+    res.status(200).json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 /**
  * @swagger
@@ -53,6 +45,15 @@ router.get("/", getTransactions);
  *   post:
  *     summary: Create a new transaction
  *     tags: [Transactions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     requestBody:
  *       required: true
  *       content:
@@ -81,63 +82,29 @@ router.get("/", getTransactions);
  *                 example: 2025-01-02T12:00:00Z
  *     responses:
  *       201:
- *         description: Transaction created successfully.
+ *         description: Transaction created successfully
  *       400:
- *         description: Validation error.
+ *         description: Validation error
+ *       403:
+ *         description: Not authorized
+ *       409:
+ *         description: Transaction ID already exists
+ *       500:
+ *         description: Internal server error
  */
-router.post("/", createTransaction);
-
-/**
- * @swagger
- * /transactions:
- *   get:
- *     summary: Get all transactions
- *     tags: [Transactions]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of transactions.
- */
-router.get("/", authenticate, authorize(["auditor", "admin"]), getTransactions);
-
-/**
- * @swagger
- * /transactions:
- *   post:
- *     summary: Create a new transaction
- *     tags: [Transactions]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               transaction_id:
- *                 type: string
- *               user_id:
- *                 type: string
- *               amount:
- *                 type: number
- *               currency:
- *                 type: string
- *               country:
- *                 type: string
- *               timestamp:
- *                 type: string
- *                 format: date-time
- *     responses:
- *       201:
- *         description: Transaction created.
- */
-router.post(
-  "/",
-  authenticate,
-  authorize(["auditor", "admin"]),
-  createTransaction
-);
+router.post("/", authenticate, organizationContext, authorize(["auditor", "admin"]), async (req, res) => {
+  try {
+    const transaction = await createTransaction(req.body, req.organizationId);
+    res.status(201).json(transaction);
+  } catch (error) {
+    if (error.message.includes('Validation')) {
+      res.status(400).json({ error: error.message });
+    } else if (error.code === 'P2002') {
+      res.status(409).json({ error: 'Transaction ID already exists' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
 
 module.exports = router;

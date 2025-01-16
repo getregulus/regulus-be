@@ -16,8 +16,10 @@ const transactionSchema = Joi.object({
 // Fetch all transactions
 exports.getTransactions = async (req, res) => {
   try {
-    logger.info("Fetching all transactions");
-    const transactions = await prisma.transaction.findMany();
+    logger.info("Fetching all transactions for organization ID:", req.organizationId);
+    const transactions = await prisma.transaction.findMany({
+      where: { organizationId: req.organizationId } // Filter by organization ID
+    });
     res.status(200).json(transactions);
     logger.info(`Fetched ${transactions.length} transactions successfully`);
   } catch (error) {
@@ -27,16 +29,15 @@ exports.getTransactions = async (req, res) => {
 };
 
 // Create a new transaction
-exports.createTransaction = async (req, res) => {
-  const { error, value } = transactionSchema.validate(req.body);
+exports.createTransaction = async (transactionData, organizationId) => {
+  const { error, value } = transactionSchema.validate(transactionData);
   if (error) {
     logger.warn(`Validation failed: ${error.details[0].message}`);
-    return res
-      .status(400)
-      .json({ success: false, error: error.details[0].message });
+    throw new Error(error.details[0].message); // Throw an error for validation failure
   }
 
   const transaction = value;
+  let flagged = false; // Initialize flagged variable
 
   try {
     logger.info(`Processing transaction: ${transaction.transaction_id}`);
@@ -50,8 +51,10 @@ exports.createTransaction = async (req, res) => {
         `Watchlist check completed for transaction ${transaction.transaction_id}: flagged=${watchlistFlagged}`
       );
 
-      // Fetch all rules from the database
-      const rules = await tx.rule.findMany();
+      // Fetch all rules from the database for the organization
+      const rules = await tx.rule.findMany({
+        where: { organizationId } // Use the passed organizationId
+      });
       logger.info(
         `Fetched ${rules.length} rules for transaction ${transaction.transaction_id}`
       );
@@ -64,10 +67,10 @@ exports.createTransaction = async (req, res) => {
       );
 
       // Combine results from watchlist and rules
-      const flagged = watchlistFlagged || rulesFlagged;
+      flagged = watchlistFlagged || rulesFlagged; // Set flagged based on evaluations
       const reasons = [...watchlistReasons, ...ruleReasons];
 
-      // Insert the transaction
+      // Insert the transaction with organizationId
       await tx.transaction.create({
         data: {
           transaction_id: transaction.transaction_id,
@@ -77,6 +80,7 @@ exports.createTransaction = async (req, res) => {
           country: transaction.country,
           timestamp: transaction.timestamp,
           flagged,
+          organizationId // Use the passed organizationId
         },
       });
       logger.info(
@@ -90,12 +94,13 @@ exports.createTransaction = async (req, res) => {
         const alertData = reasons.map((reason) => ({
           transaction_id: transaction.transaction_id,
           reason,
+          organizationId // Ensure alerts are linked to the organization
         }));
         await tx.alert.createMany({
           data: alertData,
         });
         logger.info(
-          `Alerts created for transaction ${transaction.transaction_id}`
+          `Alerts created for transaction ${transaction.transaction_id}: ${JSON.stringify(alertData)}`
         );
       }
     });
@@ -104,21 +109,14 @@ exports.createTransaction = async (req, res) => {
       `Transaction ${transaction.transaction_id} committed successfully`
     );
 
-    res.status(201).json({
+    return {
       success: true,
       message: flagged ? "Transaction flagged!" : "Transaction created!",
-    });
+    };
   } catch (error) {
     logger.error(
       `Error in createTransaction for transaction ${transaction.transaction_id}: ${error.message}`
     );
-    if (error.code === "P2002") {
-      // Prisma unique constraint error code
-      res
-        .status(400)
-        .json({ success: false, error: "Duplicate transaction ID." });
-    } else {
-      res.status(500).json({ success: false, error: error.message });
-    }
+    throw error; // Rethrow the error to be handled in the route
   }
 };

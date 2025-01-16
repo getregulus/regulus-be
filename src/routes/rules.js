@@ -9,22 +9,30 @@ const {
   updateRule,
   deleteRule,
 } = require("@controllers/ruleController");
+const { organizationContext } = require('@middleware/organization');
 
 /**
  * @swagger
  * /rules:
  *   get:
- *     summary: Get all rules
+ *     summary: Get all rules for an organization
  *     tags: [Rules]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     responses:
  *       200:
- *         description: List of all rules.
+ *         description: List of rules
  */
-router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
+router.get("/", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
   try {
-    const rules = await getRules();
+    const rules = await getRules(req.organizationId);
 
     if (!rules || rules.length === 0) {
       return res
@@ -49,6 +57,13 @@ router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
  *     tags: [Rules]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *     requestBody:
  *       required: true
  *       content:
@@ -64,17 +79,23 @@ router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
  *                 example: amount > 10000
  *     responses:
  *       201:
- *         description: Rule created successfully.
+ *         description: Rule created successfully
  *       400:
- *         description: Rule name must be unique.
+ *         description: Rule name must be unique within organization
+ *       403:
+ *         description: Not authorized
  *       500:
- *         description: Internal server error.
+ *         description: Internal server error
  */
-router.post("/", authenticate, authorize(["admin"]), async (req, res) => {
+router.post("/", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
   try {
     const { rule_name, condition } = req.body;
 
-    const rule = await createRule({ rule_name, condition });
+    const rule = await createRule({ 
+      rule_name, 
+      condition, 
+      organizationId: req.organizationId 
+    });
 
     if (!rule || !rule.id) {
       pino.error({ message: "Invalid response from createRule" });
@@ -107,13 +128,18 @@ router.post("/", authenticate, authorize(["admin"]), async (req, res) => {
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: integer
- *           example: 1
- *         description: ID of the rule to update
+ *         description: Rule ID
  *     requestBody:
  *       required: true
  *       content:
@@ -123,19 +149,23 @@ router.post("/", authenticate, authorize(["admin"]), async (req, res) => {
  *             properties:
  *               rule_name:
  *                 type: string
- *                 example: Updated Rule
  *               condition:
  *                 type: string
- *                 example: amount > 20000
  *     responses:
  *       200:
- *         description: Rule updated successfully.
+ *         description: Rule updated successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Rule not found
+ *       500:
+ *         description: Internal server error
  */
-router.put("/:id", authenticate, authorize(["admin"]), async (req, res) => {
+router.put("/:id", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
   try {
     const { id } = req.params;
 
-    const updatedRule = await updateRule(id, req.body);
+    const updatedRule = await updateRule(id, req.organizationId, req.body);
 
     if (!updatedRule) {
       return res
@@ -163,18 +193,29 @@ router.put("/:id", authenticate, authorize(["admin"]), async (req, res) => {
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Organization ID
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: integer
- *           example: 1
- *         description: ID of the rule to delete
+ *         description: Rule ID
  *     responses:
  *       200:
- *         description: Rule deleted successfully.
+ *         description: Rule deleted successfully
+ *       403:
+ *         description: Not authorized
+ *       404:
+ *         description: Rule not found
+ *       500:
+ *         description: Internal server error
  */
-router.delete("/:id", authenticate, authorize(["admin"]), async (req, res) => {
+router.delete("/:id", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
   try {
     const { id } = req.params;
 

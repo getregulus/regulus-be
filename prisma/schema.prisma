@@ -19,8 +19,9 @@ model User {
   createdAt       DateTime      @default(now())
   twoFactorEnabled Boolean      @default(false)
   preferences     Preferences?
-  plan           Plan?
-  auditLogs      AuditLog[]   
+  plan            Plan?
+  auditLogs       AuditLog[]   
+  organizations   OrganizationMember[]
 
   @@map("users")  
 }
@@ -46,46 +47,58 @@ model Plan {
   @@map("plans")
 }
 
-// Keep all existing models unchanged
 model Transaction {
-  id             Int      @id @default(autoincrement())
-  transaction_id String   @unique
+  id             Int           @id @default(autoincrement())
+  transaction_id String        @unique
   user_id        String
   amount         Float
   currency       String
   country        String
   timestamp      DateTime
-  flagged        Boolean  @default(false)
+  flagged        Boolean       @default(false)
   alerts         Alert[]
+  organizationId Int
+  organization   Organization  @relation(fields: [organizationId], references: [id])
 
   @@map("transactions")
+  @@index([organizationId])
+  @@index([timestamp])
 }
 
 model Alert {
-  id             Int         @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   transaction_id String
   reason         String
-  flagged_at     DateTime    @default(now())
-  transaction    Transaction @relation(fields: [transaction_id], references: [transaction_id])
+  flagged_at     DateTime     @default(now())
+  transaction    Transaction  @relation(fields: [transaction_id], references: [transaction_id])
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@map("alerts")
+  @@index([organizationId])
+  @@index([flagged_at])
 }
 
 model Watchlist {
-  id       Int      @id @default(autoincrement())
-  type     String
-  value    String
-  added_at DateTime @default(now())
+  id             Int          @id @default(autoincrement())
+  type           String
+  value          String
+  added_at       DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@map("watchlist")
 }
 
 model Rule {
-  id         Int      @id @default(autoincrement())
-  rule_name  String   @unique
-  condition  String
-  created_at DateTime @default(now())
+  id             Int          @id @default(autoincrement())
+  rule_name      String
+  condition      String
+  created_at     DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
+  @@unique([rule_name, organizationId])
   @@map("rules")
 }
 
@@ -97,6 +110,43 @@ model AuditLog {
   target_type String?
   timestamp   DateTime @default(now())
   user        User     @relation(fields: [user_id], references: [id])
+  organizationId Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   @@map("audit_logs")
+  @@index([organizationId])
+  @@index([timestamp])
+}
+
+model Organization {
+  id          Int       @id @default(autoincrement())
+  name        String
+  createdAt   DateTime  @default(now())
+  members     OrganizationMember[]
+  rules       Rule[]
+  alerts      Alert[]
+  transactions Transaction[]
+  watchlist   Watchlist[]
+  auditLogs   AuditLog[]
+  status      String    @default("active")
+  settings    Json?
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id              Int          @id @default(autoincrement())
+  organizationId  Int
+  userId          Int
+  role            String       @default("member")
+  joinedAt        DateTime     @default(now())
+  permissions     String       @default("[]")
+  status          String       @default("active")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("organization_members")
 }

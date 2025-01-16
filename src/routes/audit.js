@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
+const { organizationContext } = require('@middleware/organization');
 const db = require("@models/db");
 
 /**
@@ -13,6 +14,11 @@ const db = require("@models/db");
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: string
  *       - in: query
  *         name: user_id
  *         schema:
@@ -81,7 +87,7 @@ const db = require("@models/db");
  *       500:
  *         description: Internal server error.
  */
-router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
+router.get("/", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
   try {
     const {
       user_id,
@@ -93,9 +99,9 @@ router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
     } = req.query;
 
     // Build dynamic conditions
-    const conditions = [];
-    const values = [];
-    let counter = 1;
+    const conditions = []; // No longer filtering by organization
+    const values = []; // No longer using organizationId
+    let counter = 1; // Start counter at 1
 
     if (user_id) {
       conditions.push(`user_id = $${counter++}`);
@@ -112,9 +118,10 @@ router.get("/", authenticate, authorize(["admin"]), async (req, res) => {
       values.push(start_date, end_date);
     }
 
+    // Construct the query
     const query = `
       SELECT * FROM audit_logs
-      ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+      ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
       ORDER BY timestamp DESC
       LIMIT $${counter++} OFFSET $${counter++}
     `;
