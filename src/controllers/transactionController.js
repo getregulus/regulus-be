@@ -3,6 +3,7 @@ const Joi = require("joi");
 const { evaluateTransaction } = require("@utils/ruleEngine");
 const { checkWatchlist } = require("@utils/watchlistCheck");
 const logger = require("@utils/logger");
+const { logAudit } = require("@utils/auditLogger");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -14,17 +15,17 @@ const transactionSchema = Joi.object({
 });
 
 // Fetch all transactions
-exports.getTransactions = async (req, res) => {
+exports.getTransactions = async (organizationId) => {
   try {
-    logger.info("Fetching all transactions for organization ID:", req.organizationId);
+    logger.info("Fetching all transactions for organization ID:", organizationId);
     const transactions = await prisma.transaction.findMany({
-      where: { organizationId: req.organizationId } // Filter by organization ID
+      where: { organizationId }
     });
-    res.status(200).json(transactions);
     logger.info(`Fetched ${transactions.length} transactions successfully`);
+    return transactions;
   } catch (error) {
     logger.error(`Error in getTransactions: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
+    throw error;
   }
 };
 
@@ -94,13 +95,32 @@ exports.createTransaction = async (transactionData, organizationId) => {
         const alertData = reasons.map((reason) => ({
           transaction_id: transaction.transaction_id,
           reason,
-          organizationId // Ensure alerts are linked to the organization
+          organizationId
         }));
         await tx.alert.createMany({
           data: alertData,
         });
+        
+        // Add audit log for flagged transaction
+        await logAudit(
+          transaction.user_id, 
+          "Transaction Flagged", 
+          organizationId,
+          transaction.transaction_id, 
+          "transaction"
+        );
+        
         logger.info(
           `Alerts created for transaction ${transaction.transaction_id}: ${JSON.stringify(alertData)}`
+        );
+      } else {
+        // Add audit log for successful transaction
+        await logAudit(
+          transaction.user_id, 
+          "Transaction Created", 
+          organizationId,
+          transaction.transaction_id, 
+          "transaction"
         );
       }
     });

@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
 const { organizationContext } = require('@middleware/organization');
-const db = require("@models/db");
+const { PrismaClient } = require('@prisma/client');
+
+const prisma = new PrismaClient();
 
 /**
  * @swagger
@@ -98,51 +100,64 @@ router.get("/", authenticate, organizationContext, authorize(["admin"]), async (
       offset = 0,
     } = req.query;
 
-    // Build dynamic conditions
-    const conditions = []; // No longer filtering by organization
-    const values = []; // No longer using organizationId
-    let counter = 1; // Start counter at 1
+    // Build where conditions
+    const where = {
+      organizationId: req.organizationId // Filter by organization
+    };
 
     if (user_id) {
-      conditions.push(`user_id = $${counter++}`);
-      values.push(user_id);
+      where.user_id = parseInt(user_id);
     }
 
     if (action) {
-      conditions.push(`action ILIKE $${counter++}`);
-      values.push(`%${action}%`);
+      where.action = {
+        contains: action,
+        mode: 'insensitive'
+      };
     }
 
     if (start_date && end_date) {
-      conditions.push(`timestamp BETWEEN $${counter++} AND $${counter++}`);
-      values.push(start_date, end_date);
+      where.timestamp = {
+        gte: new Date(start_date),
+        lte: new Date(end_date)
+      };
     }
 
-    // Construct the query
-    const query = `
-      SELECT * FROM audit_logs
-      ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
-      ORDER BY timestamp DESC
-      LIMIT $${counter++} OFFSET $${counter++}
-    `;
+    // Fetch audit logs with pagination
+    const auditLogs = await prisma.auditLog.findMany({
+      where,
+      take: parseInt(limit),
+      skip: parseInt(offset),
+      orderBy: {
+        timestamp: 'desc'
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
 
-    values.push(limit, offset);
-
-    const { rows } = await db.query(query, values);
-
-    if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No logs found." });
+    if (auditLogs.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "No logs found." 
+      });
     }
 
-    res.status(200).json(rows);
+    res.status(200).json(auditLogs);
   } catch (error) {
     console.error("Error fetching audit logs:", {
       query: req.query,
       error: error.message,
     });
-    res.status(500).json({ success: false, error: "Internal server error." });
+    res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 });
 

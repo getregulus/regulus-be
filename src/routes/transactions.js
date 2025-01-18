@@ -32,7 +32,7 @@ const {
  */
 router.get("/", authenticate, organizationContext, authorize(["auditor", "admin"]), async (req, res) => {
   try {
-    const transactions = await getTransactions(req, res);
+    const transactions = await getTransactions(req.organizationId);
     res.status(200).json(transactions);
   } catch (error) {
     res.status(500).json({ error: error.message });

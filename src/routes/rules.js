@@ -40,7 +40,7 @@ router.get("/", authenticate, organizationContext, authorize(["admin"]), async (
         .json({ success: false, message: "No rules found." });
     }
 
-    await logAudit(req.user.id, "Viewed Rules");
+    await logAudit(req.user.id, "Viewed Rules", req.organizationId);
 
     return res.status(200).json(rules);
   } catch (error) {
@@ -104,7 +104,7 @@ router.post("/", authenticate, organizationContext, authorize(["admin"]), async 
         .json({ success: false, error: "Failed to create rule." });
     }
 
-    await logAudit(req.user.id, "Created Rule", rule.id, "rule");
+    await logAudit(req.user.id, "Created Rule", req.organizationId, rule.id, "rule");
 
     return res
       .status(201)
@@ -173,7 +173,7 @@ router.put("/:id", authenticate, organizationContext, authorize(["admin"]), asyn
         .json({ success: false, message: "Rule not found." });
     }
 
-    await logAudit(req.user.id, "Updated Rule", id, "rule");
+    await logAudit(req.user.id, "Updated Rule", req.organizationId, id, "rule");
 
     return res
       .status(200)
@@ -219,7 +219,7 @@ router.delete("/:id", authenticate, organizationContext, authorize(["admin"]), a
   try {
     const { id } = req.params;
 
-    const result = await deleteRule(id);
+    const result = await deleteRule(id, req.organizationId);
 
     if (!result) {
       return res
@@ -227,7 +227,7 @@ router.delete("/:id", authenticate, organizationContext, authorize(["admin"]), a
         .json({ success: false, message: "Rule not found." });
     }
 
-    await logAudit(req.user.id, "Deleted Rule", id, "rule");
+    await logAudit(req.user.id, "Deleted Rule", req.organizationId, id, "rule");
 
     return res
       .status(200)
