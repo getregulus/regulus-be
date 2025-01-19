@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.1.5",
     "google-auth-library": "^9.15.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
@@ -23,7 +24,9 @@
     "pino": "^9.6.0",
     "safe-eval": "^0.4.1",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.0.5",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "pino-pretty": "^13.0.0",

@@ -10,6 +10,9 @@ RUN apk update && apk add --no-cache \
 
 WORKDIR /app
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 COPY package*.json ./
 RUN npm install
 
