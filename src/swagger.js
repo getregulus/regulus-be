@@ -1,22 +1,21 @@
-const swaggerJsDoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
 
-const swaggerOptions = {
+const options = {
   definition: {
     openapi: "3.0.0",
     info: {
       title: "Regulus.ai API Documentation",
       version: "1.0.0",
       description: "API documentation for Regulus.ai",
+      contact: {
+        name: "API Support",
+        email: "support@example.com",
+      },
     },
     servers: [
       {
         url: process.env.API_URL || "http://localhost:3000",
-        description: "Deployed server",
-      },
-      {
-        url: "http://localhost:3000",
-        description: "Local server",
+        description: "API Server",
       },
     ],
     components: {
@@ -33,10 +32,36 @@ const swaggerOptions = {
         bearerAuth: [],
       },
     ],
+    tags: [
+      {
+        name: "Auth",
+        description: "Authentication and user management endpoints",
+      },
+      {
+        name: "Organizations",
+        description: "Organization management endpoints",
+      },
+      {
+        name: "Transactions",
+        description: "Transaction monitoring endpoints",
+      },
+      {
+        name: "Rules",
+        description: "Rule management endpoints",
+      },
+      {
+        name: "Alerts",
+        description: "Alert management endpoints",
+      },
+      {
+        name: "Watchlist",
+        description: "Watchlist management endpoints",
+      },
+    ],
   },
-  apis: ["./src/routes/*.js"],
+  apis: ["./src/routes/*.js", "./src/swagger/schemas.js"],
 };
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
+const swaggerSpec = swaggerJsdoc(options);
 
-module.exports = { swaggerUi, swaggerDocs };
+module.exports = swaggerSpec;
