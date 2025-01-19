@@ -1,21 +1,41 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
-const { logAudit } = require("@utils/auditLogger");
-const pino = require("@utils/logger");
+const { organizationContext } = require("@middleware/organization");
+const { validateSchema } = require("@middleware/validation");
+const { apiLimiter } = require("@middleware/rateLimiter");
+const Joi = require("joi");
 const {
   getRules,
   createRule,
   updateRule,
   deleteRule,
 } = require("@controllers/ruleController");
-const { organizationContext } = require('@middleware/organization');
+
+const createRuleSchema = Joi.object({
+  rule_name: Joi.string().min(3).max(100).required(),
+  condition: Joi.string().min(3).max(500).required(),
+  description: Joi.string().max(1000),
+});
+
+const updateRuleSchema = Joi.object({
+  rule_name: Joi.string().min(3).max(100),
+  condition: Joi.string().min(3).max(500),
+  description: Joi.string().max(1000),
+}).min(1);
+
+const querySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  sortBy: Joi.string(),
+  sortOrder: Joi.string().valid("asc", "desc").default("desc"),
+});
 
 /**
  * @swagger
  * /rules:
  *   get:
- *     summary: Get all rules for an organization
+ *     summary: Get all rules
  *     tags: [Rules]
  *     security:
  *       - bearerAuth: []
@@ -24,34 +44,31 @@ const { organizationContext } = require('@middleware/organization');
  *         name: x-organization-id
  *         required: true
  *         schema:
- *           type: string
+ *           type: integer
  *         description: Organization ID
  *     responses:
  *       200:
  *         description: List of rules
- */
-router.get("/", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
-  try {
-    const rules = await getRules(req.organizationId);
-
-    if (!rules || rules.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No rules found." });
-    }
-
-    await logAudit(req.user.id, "Viewed Rules", req.organizationId);
-
-    return res.status(200).json(rules);
-  } catch (error) {
-    pino.error({ message: "Error fetching rules", error: error.message });
-    return res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-/**
- * @swagger
- * /rules:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Rule'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ * 
  *   post:
  *     summary: Create a new rule
  *     tags: [Rules]
@@ -62,7 +79,7 @@ router.get("/", authenticate, organizationContext, authorize(["admin"]), async (
  *         name: x-organization-id
  *         required: true
  *         schema:
- *           type: string
+ *           type: integer
  *         description: Organization ID
  *     requestBody:
  *       required: true
@@ -70,54 +87,34 @@ router.get("/", authenticate, organizationContext, authorize(["admin"]), async (
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - rule_name
+ *               - condition
  *             properties:
  *               rule_name:
  *                 type: string
- *                 example: High-Value Transactions
+ *                 minLength: 3
+ *                 maxLength: 100
+ *                 example: "High Value Transactions"
  *               condition:
  *                 type: string
- *                 example: amount > 10000
+ *                 minLength: 3
+ *                 maxLength: 500
+ *                 example: "amount > 10000"
  *     responses:
  *       201:
- *         description: Rule created successfully
+ *         description: Rule created
  *       400:
- *         description: Rule name must be unique within organization
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
  *       403:
- *         description: Not authorized
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
  *       500:
- *         description: Internal server error
+ *         $ref: '#/components/responses/InternalError'
  */
-router.post("/", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
-  try {
-    const { rule_name, condition } = req.body;
-
-    const rule = await createRule({ 
-      rule_name, 
-      condition, 
-      organizationId: req.organizationId 
-    });
-
-    if (!rule || !rule.id) {
-      pino.error({ message: "Invalid response from createRule" });
-      return res
-        .status(500)
-        .json({ success: false, error: "Failed to create rule." });
-    }
-
-    await logAudit(req.user.id, "Created Rule", req.organizationId, rule.id, "rule");
-
-    return res
-      .status(201)
-      .json({ success: true, rule, message: "Rule created successfully!" });
-  } catch (error) {
-    if (error.name === "DuplicateRuleError") {
-      pino.warn({ message: "Duplicate rule name error", rule_name });
-      return res.status(400).json({ success: false, error: error.message });
-    }
-    pino.error({ message: "Error creating rule", error: error.message });
-    return res.status(500).json({ error: "Internal server error." });
-  }
-});
 
 /**
  * @swagger
@@ -133,60 +130,83 @@ router.post("/", authenticate, organizationContext, authorize(["admin"]), async 
  *         required: true
  *         schema:
  *           type: string
- *         description: Organization ID
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: integer
- *         description: Rule ID
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             minProperties: 1
  *             properties:
  *               rule_name:
  *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 100
  *               condition:
  *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 500
  *     responses:
  *       200:
  *         description: Rule updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Rule'
+ *       400:
+ *         description: Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       403:
- *         description: Not authorized
+ *         description: Forbidden - Invalid organization or insufficient permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: Rule not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Rule name already exists in organization
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Too many requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
- */
-router.put("/:id", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const updatedRule = await updateRule(id, req.organizationId, req.body);
-
-    if (!updatedRule) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Rule not found." });
-    }
-
-    await logAudit(req.user.id, "Updated Rule", req.organizationId, id, "rule");
-
-    return res
-      .status(200)
-      .json({ success: true, message: "Rule updated successfully!" });
-  } catch (error) {
-    pino.error({ message: "Error updating rule", error: error.message });
-    return res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-/**
- * @swagger
- * /rules/{id}:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *
  *   delete:
  *     summary: Delete a rule
  *     tags: [Rules]
@@ -198,44 +218,123 @@ router.put("/:id", authenticate, organizationContext, authorize(["admin"]), asyn
  *         required: true
  *         schema:
  *           type: string
- *         description: Organization ID
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: integer
- *         description: Rule ID
  *     responses:
  *       200:
  *         description: Rule deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Rule deleted successfully"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       403:
- *         description: Not authorized
+ *         description: Forbidden - Invalid organization or insufficient permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: Rule not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Too many requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.delete("/:id", authenticate, organizationContext, authorize(["admin"]), async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const result = await deleteRule(id, req.organizationId);
-
-    if (!result) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Rule not found." });
+router.get(
+  "/",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin", "auditor"]),
+  async (req, res, next) => {
+    try {
+      const result = await getRules(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
     }
-
-    await logAudit(req.user.id, "Deleted Rule", req.organizationId, id, "rule");
-
-    return res
-      .status(200)
-      .json({ success: true, message: "Rule deleted successfully." });
-  } catch (error) {
-    pino.error({ message: "Error deleting rule", error: error.message });
-    return res.status(500).json({ error: "Internal server error." });
   }
-});
+);
+
+router.post(
+  "/",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  validateSchema(createRuleSchema),
+  async (req, res, next) => {
+    try {
+      const result = await createRule(req);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put(
+  "/:id",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  validateSchema(updateRuleSchema),
+  async (req, res, next) => {
+    try {
+      const result = await updateRule(req, req.params.id, req.body);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.delete(
+  "/:id",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await deleteRule(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;

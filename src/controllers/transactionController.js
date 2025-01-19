@@ -4,6 +4,7 @@ const { evaluateTransaction } = require("@utils/ruleEngine");
 const { checkWatchlist } = require("@utils/watchlistCheck");
 const logger = require("@utils/logger");
 const { logAudit } = require("@utils/auditLogger");
+const { createResponse } = require("@utils/responseHandler");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -15,128 +16,151 @@ const transactionSchema = Joi.object({
 });
 
 // Fetch all transactions
-exports.getTransactions = async (organizationId) => {
+async function getTransactions(req) {
+  const { organization, requestId } = req;
+  const organizationId = organization.id;
+
   try {
-    logger.info("Fetching all transactions for organization ID:", organizationId);
-    const transactions = await prisma.transaction.findMany({
-      where: { organizationId }
+    logger.info({
+      message: "Fetching transactions",
+      organizationId,
+      requestId,
     });
-    logger.info(`Fetched ${transactions.length} transactions successfully`);
-    return transactions;
+
+    const transactions = await prisma.transaction.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        transaction_id: true,
+        amount: true,
+        currency: true,
+        flagged: true,
+        timestamp: true,
+        user_id: true,
+        country: true,
+      },
+    });
+
+    logger.info({
+      message: `Fetched ${transactions.length} transactions`,
+      organizationId,
+      requestId,
+    });
+
+    return createResponse(true, transactions);
   } catch (error) {
-    logger.error(`Error in getTransactions: ${error.message}`);
+    logger.error({
+      message: "Error fetching transactions",
+      organizationId,
+      requestId,
+      error,
+    });
     throw error;
   }
-};
+}
 
 // Create a new transaction
-exports.createTransaction = async (transactionData, organizationId) => {
+async function createTransaction(req, transactionData) {
+  const { organization, requestId } = req;
+  const organizationId = organization.id;
+
   const { error, value } = transactionSchema.validate(transactionData);
   if (error) {
-    logger.warn(`Validation failed: ${error.details[0].message}`);
-    throw new Error(error.details[0].message); // Throw an error for validation failure
+    const err = new Error(error.details[0].message);
+    err.name = "ValidationError";
+    throw err;
   }
 
   const transaction = value;
-  let flagged = false; // Initialize flagged variable
+  let flagged = false;
 
-  try {
-    logger.info(`Processing transaction: ${transaction.transaction_id}`);
+  logger.info({
+    message: "Processing transaction",
+    transactionId: transaction.transaction_id,
+    requestId,
+  });
 
-    // Start a Prisma transaction
-    await prisma.$transaction(async (tx) => {
-      // Check against the watchlist
-      const { flagged: watchlistFlagged, reasons: watchlistReasons } =
-        await checkWatchlist(transaction);
-      logger.info(
-        `Watchlist check completed for transaction ${transaction.transaction_id}: flagged=${watchlistFlagged}`
-      );
+  // Start a Prisma transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Check against the watchlist
+    const { flagged: watchlistFlagged, reasons: watchlistReasons } =
+      await checkWatchlist(transaction);
 
-      // Fetch all rules from the database for the organization
-      const rules = await tx.rule.findMany({
-        where: { organizationId } // Use the passed organizationId
-      });
-      logger.info(
-        `Fetched ${rules.length} rules for transaction ${transaction.transaction_id}`
-      );
-
-      // Evaluate transaction against rules
-      const { flagged: rulesFlagged, reasons: ruleReasons } =
-        evaluateTransaction(transaction, rules);
-      logger.info(
-        `Rule evaluation completed for transaction ${transaction.transaction_id}: flagged=${rulesFlagged}`
-      );
-
-      // Combine results from watchlist and rules
-      flagged = watchlistFlagged || rulesFlagged; // Set flagged based on evaluations
-      const reasons = [...watchlistReasons, ...ruleReasons];
-
-      // Insert the transaction with organizationId
-      await tx.transaction.create({
-        data: {
-          transaction_id: transaction.transaction_id,
-          user_id: transaction.user_id,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          country: transaction.country,
-          timestamp: transaction.timestamp,
-          flagged,
-          organizationId // Use the passed organizationId
-        },
-      });
-      logger.info(
-        `Transaction ${transaction.transaction_id} ${
-          flagged ? "flagged" : "inserted successfully"
-        }`
-      );
-
-      // Insert alerts if flagged
-      if (flagged) {
-        const alertData = reasons.map((reason) => ({
-          transaction_id: transaction.transaction_id,
-          reason,
-          organizationId
-        }));
-        await tx.alert.createMany({
-          data: alertData,
-        });
-        
-        // Add audit log for flagged transaction
-        await logAudit(
-          transaction.user_id, 
-          "Transaction Flagged", 
-          organizationId,
-          transaction.transaction_id, 
-          "transaction"
-        );
-        
-        logger.info(
-          `Alerts created for transaction ${transaction.transaction_id}: ${JSON.stringify(alertData)}`
-        );
-      } else {
-        // Add audit log for successful transaction
-        await logAudit(
-          transaction.user_id, 
-          "Transaction Created", 
-          organizationId,
-          transaction.transaction_id, 
-          "transaction"
-        );
-      }
+    logger.info({
+      message: "Watchlist check completed",
+      transactionId: transaction.transaction_id,
+      flagged: watchlistFlagged,
+      requestId,
     });
 
-    logger.info(
-      `Transaction ${transaction.transaction_id} committed successfully`
+    // Fetch rules
+    const rules = await tx.rule.findMany({
+      where: { organizationId },
+    });
+
+    // Evaluate transaction
+    const { flagged: rulesFlagged, reasons: ruleReasons } = evaluateTransaction(
+      transaction,
+      rules
     );
 
-    return {
-      success: true,
-      message: flagged ? "Transaction flagged!" : "Transaction created!",
-    };
-  } catch (error) {
-    logger.error(
-      `Error in createTransaction for transaction ${transaction.transaction_id}: ${error.message}`
-    );
-    throw error; // Rethrow the error to be handled in the route
-  }
+    flagged = watchlistFlagged || rulesFlagged;
+    const reasons = [...watchlistReasons, ...ruleReasons];
+
+    // Create transaction
+    const createdTransaction = await tx.transaction.create({
+      data: {
+        ...transaction,
+        flagged,
+        organizationId,
+      },
+    });
+
+    // Create alerts if flagged
+    if (flagged) {
+      const alertData = reasons.map((reason) => ({
+        transaction_id: transaction.transaction_id,
+        reason,
+        organizationId,
+      }));
+      await tx.alert.createMany({
+        data: alertData,
+      });
+
+      await logAudit(
+        transaction.user_id,
+        "Transaction Flagged",
+        organizationId,
+        transaction.transaction_id,
+        "transaction"
+      );
+    } else {
+      await logAudit(
+        transaction.user_id,
+        "Transaction Created",
+        organizationId,
+        transaction.transaction_id,
+        "transaction"
+      );
+    }
+
+    return { createdTransaction, flagged };
+  });
+
+  logger.info({
+    message: "Transaction processed successfully",
+    transactionId: transaction.transaction_id,
+    flagged: result.flagged,
+    requestId,
+  });
+
+  return createResponse(true, {
+    transaction: result.createdTransaction,
+    flagged: result.flagged,
+  });
+}
+
+module.exports = {
+  getTransactions,
+  createTransaction,
 };

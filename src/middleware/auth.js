@@ -1,34 +1,73 @@
 const jwt = require("jsonwebtoken");
 const logger = require("@utils/logger");
+const { AuthenticationError, AuthorizationError } = require("@utils/errors");
 
 // Middleware to authenticate users
 const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) {
-    logger.warn("Access denied. No token provided.");
-    return res.status(401).json({ error: "Access denied. No token provided." });
-  }
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      logger.error({
+        message: "Authentication failed - no token",
+        requestId: req.requestId,
+        path: req.path,
+      });
+      throw new AuthenticationError("No token provided.");
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      logger.error({
+        message: "Authentication failed - empty token",
+        requestId: req.requestId,
+        path: req.path,
+      });
+      throw new AuthenticationError("No token provided.");
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+      next();
+    } catch (error) {
+      logger.error({
+        message: "Authentication failed - invalid token",
+        requestId: req.requestId,
+        path: req.path,
+        error: error.message,
+      });
+      throw new AuthenticationError("Invalid token.");
+    }
   } catch (error) {
-    logger.error(`Invalid token: ${error.message}`);
-    res.status(400).json({ error: "Invalid token." });
+    next(error);
   }
 };
 
 // Middleware to authorize specific roles
-const authorize = (roles) => {
+const authorize = (roles = []) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      logger.warn(`Access forbidden for user role: ${req.user?.role}`);
-      return res
-        .status(403)
-        .json({ error: "Access forbidden: insufficient privileges." });
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      if (roles.length && !roles.includes(req.user.role)) {
+        logger.error({
+          message: "Authorization failed - insufficient permissions",
+          requestId: req.requestId,
+          userRole: req.user.role,
+          requiredRoles: roles,
+          path: req.path,
+        });
+        throw new AuthenticationError("Insufficient permissions");
+      }
+
+      next();
+    } catch (error) {
+      next(error);
     }
-    next();
   };
 };
 
