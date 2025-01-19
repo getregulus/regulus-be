@@ -1,92 +1,178 @@
-const prisma = require('@utils/prisma');
-const pino = require("@utils/logger");
+const prisma = require("@utils/prisma");
+const logger = require("@utils/logger");
+const { createResponse } = require("@utils/responseHandler");
+const Joi = require("joi");
+const { ValidationError } = require("joi");
 
-// Fetch all rules for an organization
-exports.getRules = async (organizationId) => {
-  try {
-    pino.info({ message: "Fetching rules for organization", organizationId });
-    const rules = await prisma.rule.findMany({
-      where: { organizationId },
-      orderBy: { created_at: "desc" },
-    });
-    pino.info({ message: "Rules fetched successfully", count: rules.length });
-    return rules;
-  } catch (error) {
-    pino.error({ message: "Error fetching rules", error: error.message });
-    throw new Error("Failed to fetch rules.");
-  }
-};
+const ruleSchema = Joi.object({
+  rule_name: Joi.string().required(),
+  condition: Joi.string().required(),
+});
 
 // Create a new rule
-exports.createRule = async ({ rule_name, condition, organizationId }) => {
+async function createRule(req) {
+  const { organization, body, requestId } = req;
+  
+  const { error } = ruleSchema.validate(body);
+  if (error) {
+    const err = new ValidationError(error.details[0].message);
+    throw err;
+  }
+
   try {
-    pino.info({ message: "Creating rule...", rule_name, condition, organizationId });
+    logger.info({
+      message: "Creating rule",
+      ruleName: body.rule_name,
+      requestId,
+    });
+
     const rule = await prisma.rule.create({
-      data: { 
-        rule_name, 
-        condition,
-        organizationId 
+      data: {
+        rule_name: body.rule_name,
+        condition: body.condition,
+        organizationId: organization.id,
       },
     });
-    pino.info({ message: "Rule created successfully", rule });
-    return rule;
+
+    logger.info({
+      message: "Rule created successfully",
+      ruleId: rule.id,
+      requestId,
+    });
+
+    return createResponse(true, rule);
   } catch (error) {
-    if (error.code === "P2002") {
-      pino.warn({ message: "Duplicate rule name detected", rule_name, organizationId });
-      throw new Error("Rule name must be unique within the organization.");
-    }
-    pino.error({ message: "Error creating rule", error: error.message });
-    throw new Error("Failed to create rule.");
+    logger.error({
+      message: "Error creating rule",
+      ruleName: body.rule_name,
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
   }
-};
+}
+
+// Get all rules for an organization
+async function getRules(req) {
+  const { organization, requestId } = req;
+
+  try {
+    logger.info({
+      message: "Fetching rules",
+      organizationId: organization.id,
+      requestId,
+    });
+
+    const rules = await prisma.rule.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { created_at: "desc" },
+    });
+
+    logger.info({
+      message: `Fetched ${rules.length} rules`,
+      organizationId: organization.id,
+      requestId,
+    });
+
+    return createResponse(true, rules);
+  } catch (error) {
+    logger.error({
+      message: "Error fetching rules",
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+}
 
 // Update an existing rule
-exports.updateRule = async (id, organizationId, body) => {
+async function updateRule(req, id) {
+  const { organization, body, requestId } = req;
+  const { rule_name, condition } = body;
+
+  if (!rule_name && !condition) {
+    const err = new Error("No fields to update.");
+    err.name = "ValidationError";
+    throw err;
+  }
+
   try {
-    const { rule_name, condition } = body || {}; // Safely destructure with a fallback
+    logger.info({
+      message: "Updating rule",
+      ruleId: id,
+      ruleName: rule_name,
+      requestId,
+    });
 
-    if (!rule_name && !condition) {
-      throw new Error("No fields to update.");
-    }
-
-    pino.info({ message: "Updating rule...", id, rule_name, condition });
     const updatedRule = await prisma.rule.update({
-      where: { 
+      where: {
         id: parseInt(id),
-        organizationId // Ensure rule belongs to organization
+        organizationId: organization.id,
       },
       data: { rule_name, condition },
     });
-    pino.info({ message: "Rule updated successfully", id, rule_name });
-    return updatedRule;
+
+    logger.info({
+      message: "Rule updated successfully",
+      ruleId: id,
+      requestId,
+    });
+
+    return createResponse(true, updatedRule);
   } catch (error) {
-    if (error.code === "P2025") {
-      pino.warn({ message: "Rule not found during update", id });
-      throw new Error("Rule not found.");
-    }
-    pino.error({ message: "Error updating rule", id, error: error.message });
-    throw new Error(error.message);
+    logger.error({
+      message: "Error updating rule",
+      ruleId: id,
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
   }
-};
+}
 
 // Delete a rule
-exports.deleteRule = async (id, organizationId) => {
+async function deleteRule(req, id) {
+  const { organization, requestId } = req;
+
   try {
-    pino.info({ message: "Deleting rule...", id });
+    logger.info({
+      message: "Deleting rule",
+      ruleId: id,
+      requestId,
+    });
+
     await prisma.rule.delete({
-      where: { 
+      where: {
         id: parseInt(id),
-        organizationId // Ensure rule belongs to organization
+        organizationId: organization.id,
       },
     });
-    pino.info({ message: "Rule deleted successfully", id });
-    return true;
+
+    logger.info({
+      message: "Rule deleted successfully",
+      ruleId: id,
+      requestId,
+    });
+
+    return createResponse(true, { id });
   } catch (error) {
-    if (error.code === "P2025") {
-      pino.warn({ message: "Rule not found during delete", id });
-      throw new Error("Rule not found.");
-    }
-    pino.error({ message: "Error deleting rule", id, error: error.message });
-    throw new Error(error.message);
+    logger.error({
+      message: "Error deleting rule",
+      ruleId: id,
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
   }
+}
+
+module.exports = {
+  createRule,
+  getRules,
+  updateRule,
+  deleteRule,
 };

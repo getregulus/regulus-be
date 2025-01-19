@@ -1,10 +1,19 @@
-const prisma = require('@utils/prisma');
+const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
+const { createResponse } = require("@utils/responseHandler");
 
 // Fetch all alerts for an organization
-exports.getAlerts = async (organizationId) => {
+exports.getAlerts = async function(req) {
+  const { organization, requestId } = req;
+  const organizationId = organization.id;
+
   try {
-    logger.info("Fetching alerts for organization", { organizationId });
+    logger.info({
+      message: "Fetching alerts for organization",
+      organizationId,
+      requestId,
+    });
+
     const alerts = await prisma.alert.findMany({
       where: { organizationId },
       orderBy: { flagged_at: "desc" },
@@ -12,56 +21,47 @@ exports.getAlerts = async (organizationId) => {
         transaction: true
       }
     });
-  
-    logger.info(`Fetched ${alerts.length} alerts successfully`);
-    return alerts;
-  } catch (error) {
-    logger.error(`Error fetching alerts: ${error.message}`);
-    throw new Error("Failed to fetch alerts");
-  }
-};
 
-// Create a new alert
-exports.createAlert = async (transaction_id, reason, organizationId) => {
-  try {
-    const alert = await prisma.alert.create({
-      data: {
-        transaction_id,
-        reason,
-        organizationId
-      },
+    logger.info({
+      message: `Fetched ${alerts.length} alerts successfully`,
+      requestId,
     });
-    logger.info(
-      `Alert created for transaction: ${transaction_id} - Reason: ${reason}`
-    );
-    return alert;
+
+    return createResponse(true, alerts);
   } catch (error) {
-    logger.error(
-      `Error in creating alert for transaction ${transaction_id}: ${error.message}`
-    );
-    throw new Error("Failed to create alert.");
+    logger.error({
+      message: "Error fetching alerts",
+      organizationId,
+      requestId,
+      error
+    });
+    throw error;
   }
 };
 
 // Delete an alert
-exports.deleteAlert = async (id, organizationId) => {
-  try {
-    logger.info(`Attempting to delete alert with ID: ${id}`);
-    const deletedAlert = await prisma.alert.delete({
-      where: { 
-        id: parseInt(id),
-        organizationId // Ensure alert belongs to organization
-      },
-    });
+exports.deleteAlert = async (req, id) => {
+  const { organizationId, requestId } = req;
 
-    logger.info(`Alert with ID ${id} deleted successfully`);
-    return deletedAlert;
-  } catch (error) {
-    if (error.code === "P2025") {
-      logger.warn(`Alert with ID ${id} not found`);
-      throw new Error("Alert not found.");
-    }
-    logger.error(`Error in deleting alert with ID ${id}: ${error.message}`);
-    throw new Error("Failed to delete alert.");
-  }
+  logger.info({
+    message: "Attempting to delete alert",
+    alertId: id,
+    organizationId,
+    requestId,
+  });
+
+  const deletedAlert = await prisma.alert.delete({
+    where: {
+      id: parseInt(id),
+      organizationId,
+    },
+  });
+
+  logger.info({
+    message: "Alert deleted successfully",
+    alertId: id,
+    requestId,
+  });
+
+  return createResponse(true, deletedAlert);
 };

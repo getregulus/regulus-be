@@ -1,16 +1,21 @@
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
-const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
+const { createResponse } = require("@utils/responseHandler");
+const { AuthenticationError } = require("@utils/errors");
+const prisma = require("@utils/prisma");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-exports.googleRegister = async (req, res) => {
+async function googleRegister(req) {
   const { idToken } = req.body;
 
-  logger.info("Google registration initiated.");
-
   try {
+    logger.info({
+      message: "Google registration initiated",
+      requestId: req.requestId,
+    });
+
     // Verify the Google ID Token
     const ticket = await client.verifyIdToken({
       idToken,
@@ -20,7 +25,11 @@ exports.googleRegister = async (req, res) => {
     const payload = ticket.getPayload();
     const { email, name, sub: googleId } = payload;
 
-    logger.info(`Google ID Token verified. User: ${email}`);
+    logger.info({
+      message: "Google ID Token verified",
+      email,
+      requestId: req.requestId,
+    });
 
     // Check if the user already exists
     const existingUser = await prisma.user.findUnique({
@@ -28,23 +37,31 @@ exports.googleRegister = async (req, res) => {
     });
 
     if (existingUser) {
-      logger.info(`User already exists: ${email}`);
-      return res
-        .status(409)
-        .json({ error: "User already exists. Please login instead." });
+      logger.info({
+        message: "User already exists",
+        email,
+        requestId: req.requestId,
+      });
+      throw new AuthenticationError(
+        "User already exists. Please login instead."
+      );
     }
 
     // Create a new user
     const user = await prisma.user.create({
-      data: { 
-        email, 
-        name, 
-        googleId, 
-        role: "admin"
+      data: {
+        email,
+        name,
+        googleId,
+        role: "admin",
       },
     });
 
-    logger.info(`User created successfully. ID: ${user.id}`);
+    logger.info({
+      message: "User created successfully",
+      userId: user.id,
+      requestId: req.requestId,
+    });
 
     // Generate a JWT token
     const token = jwt.sign(
@@ -53,20 +70,32 @@ exports.googleRegister = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRATION }
     );
 
-    logger.info(`JWT generated successfully for user: ${email}`);
-    res.status(201).json({ token });
-  } catch (error) {
-    logger.error(`Google registration failed: ${error.message}`);
-    res.status(401).json({ error: "Unauthorized" });
-  }
-};
+    logger.info({
+      message: "JWT generated successfully",
+      email,
+      requestId: req.requestId,
+    });
 
-exports.googleLogin = async (req, res) => {
+    return createResponse(true, { token });
+  } catch (error) {
+    logger.error({
+      message: "Google registration failed",
+      error: error.message,
+      requestId: req.requestId,
+    });
+    throw error;
+  }
+}
+
+async function googleLogin(req) {
   const { idToken } = req.body;
 
-  logger.info("Google login initiated.");
-
   try {
+    logger.info({
+      message: "Google login initiated",
+      requestId: req.requestId,
+    });
+
     // Verify the Google ID Token
     const ticket = await client.verifyIdToken({
       idToken,
@@ -76,7 +105,11 @@ exports.googleLogin = async (req, res) => {
     const payload = ticket.getPayload();
     const { email } = payload;
 
-    logger.info(`Google ID Token verified. User: ${email}`);
+    logger.info({
+      message: "Google ID Token verified",
+      email,
+      requestId: req.requestId,
+    });
 
     // Check if the user exists
     const user = await prisma.user.findUnique({
@@ -84,10 +117,12 @@ exports.googleLogin = async (req, res) => {
     });
 
     if (!user) {
-      logger.info(`User not found: ${email}`);
-      return res
-        .status(404)
-        .json({ error: "User not found. Please register first." });
+      logger.info({
+        message: "User not found",
+        email,
+        requestId: req.requestId,
+      });
+      throw new AuthenticationError("User not found. Please register first.");
     }
 
     // Generate a JWT token
@@ -97,18 +132,32 @@ exports.googleLogin = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRATION }
     );
 
-    logger.info(`JWT generated successfully for user: ${email}`);
-    res.status(200).json({ 
+    logger.info({
+      message: "JWT generated successfully",
+      email,
+      requestId: req.requestId,
+    });
+
+    return createResponse(true, {
       token,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
   } catch (error) {
-    logger.error(`Google login failed: ${error.message}`);
-    res.status(401).json({ error: "Unauthorized" });
+    logger.error({
+      message: "Google login failed",
+      error: error.message,
+      requestId: req.requestId,
+    });
+    throw error;
   }
+}
+
+module.exports = {
+  googleRegister,
+  googleLogin,
 };
