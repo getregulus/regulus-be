@@ -6,6 +6,34 @@ const {
   googleRegister,
   googleLogin,
 } = require("@controllers/googleAuthController");
+const { validateSchema } = require('@middleware/validation');
+const { commonSchemas } = require('@utils/validators');
+const { authLimiter, apiLimiter } = require('@middleware/rateLimiter');
+const Joi = require("joi");
+
+// Validation schemas
+const loginSchema = Joi.object({
+  email: commonSchemas.email.required(),
+  password: Joi.string().required()
+});
+
+const registerSchema = Joi.object({
+  name: commonSchemas.name.required(),
+  email: commonSchemas.email.required(),
+  password: commonSchemas.password.required(),
+  role: Joi.string().valid("admin", "auditor").optional(),
+});
+
+const updateUserSchema = Joi.object({
+  name: commonSchemas.name,
+  email: commonSchemas.email,
+  preferences: Joi.object({
+    notifications: Joi.object({
+      email: commonSchemas.boolean
+    })
+  }),
+  twoFactorEnabled: commonSchemas.boolean
+}).min(1);
 
 /**
  * @swagger
@@ -61,7 +89,17 @@ const {
  *       500:
  *         description: Internal server error.
  */
-router.post("/register", register);
+router.post("/register", 
+  authLimiter,
+  validateSchema(registerSchema),
+  async (req, res, next) => {
+    try {
+      const result = await register(req);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -101,7 +139,18 @@ router.post("/register", register);
  *       500:
  *         description: Internal server error.
  */
-router.post("/register/admin", authenticate, authorize(["admin"]), register);
+router.post("/register/admin", 
+  authenticate, 
+  authorize(["admin"]), 
+  validateSchema(registerSchema),
+  async (req, res, next) => {
+    try {
+      const result = await register(req);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -153,7 +202,17 @@ router.post("/register/admin", authenticate, authorize(["admin"]), register);
  *       500:
  *         description: Internal server error.
  */
-router.post("/login", login);
+router.post("/login", 
+  authLimiter,
+  validateSchema(loginSchema),
+  async (req, res, next) => {
+    try {
+      const result = await login(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -199,7 +258,19 @@ router.post("/login", login);
  *       500:
  *         description: Internal server error.
  */
-router.post("/google-register", googleRegister);
+router.post("/google-register", 
+  authLimiter,
+  validateSchema(Joi.object({
+    idToken: Joi.string().required()
+  })),
+  async (req, res, next) => {
+    try {
+      const result = await googleRegister(req);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -245,7 +316,19 @@ router.post("/google-register", googleRegister);
  *       500:
  *         description: Internal server error.
  */
-router.post("/google-login", googleLogin);
+router.post("/google-login", 
+  authLimiter,
+  validateSchema(Joi.object({
+    idToken: Joi.string().required()
+  })),
+  async (req, res, next) => {
+    try {
+      const result = await googleLogin(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -297,7 +380,17 @@ router.post("/google-login", googleLogin);
  *                   type: string
  *                   example: "Internal server error."
  */
-router.get("/me", authenticate, getMe);
+router.get("/me", 
+  apiLimiter,
+  authenticate, 
+  async (req, res, next) => {
+    try {
+      const result = await getMe(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 /**
  * @swagger
@@ -343,6 +436,17 @@ router.get("/me", authenticate, getMe);
  *       500:
  *         description: Internal server error
  */
-router.put("/me", authenticate, updateMe);
+router.put("/me", 
+  apiLimiter,
+  authenticate,
+  validateSchema(updateUserSchema),
+  async (req, res, next) => {
+    try {
+      const result = await updateMe(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+});
 
 module.exports = router;
