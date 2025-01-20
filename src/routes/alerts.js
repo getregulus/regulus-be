@@ -3,7 +3,9 @@ const router = express.Router();
 const { authenticate, authorize } = require("@middleware/auth");
 const { organizationContext } = require("@middleware/organization");
 const { apiLimiter } = require("@middleware/rateLimiter");
-const { getAlerts, deleteAlert } = require("@controllers/alertController");
+const { validateSchema } = require("@middleware/validation");
+const Joi = require("joi");
+const { getAlerts, deleteAlert, addAlert } = require("@controllers/alertController");
 
 /**
  * @swagger
@@ -52,6 +54,108 @@ router.get(
     try {
       const result = await getAlerts(req);
       res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Validation schema for adding an alert
+const addAlertSchema = Joi.object({
+  transaction_id: Joi.string().required(),
+  reason: Joi.string().max(1000).required(),
+});
+
+/**
+ * @swagger
+ * /alerts:
+ *   post:
+ *     summary: Add a new alert
+ *     tags: [Alerts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - transaction_id
+ *               - reason
+ *             properties:
+ *               transaction_id:
+ *                 type: string
+ *                 example: "txn_123456"
+ *               reason:
+ *                 type: string
+ *                 maxLength: 1000
+ *                 example: "Suspicious activity detected"
+ *     responses:
+ *       201:
+ *         description: Alert added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     transaction_id:
+ *                       type: string
+ *                       example: "txn_123456"
+ *                     reason:
+ *                       type: string
+ *                       example: "Suspicious activity detected"
+ *       400:
+ *         description: Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - Invalid organization or insufficient permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post(
+  "/",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  validateSchema(addAlertSchema),
+  async (req, res, next) => {
+    try {
+      const result = await addAlert(req);
+      res.status(201).json(result);
     } catch (error) {
       next(error);
     }

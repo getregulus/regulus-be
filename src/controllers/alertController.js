@@ -39,6 +39,50 @@ exports.getAlerts = async function(req) {
   }
 };
 
+// Add a new alert
+exports.addAlert = async (req) => {
+  const { organization, requestId } = req;
+  const { transaction_id, reason } = req.body;
+
+  logger.info({
+    message: "Adding alert",
+    transaction_id,
+    organizationId: organization.id,
+    requestId,
+  });
+
+  // Check if the transaction exists
+  const transaction = await prisma.transaction.findUnique({
+    where: { transaction_id },
+  });
+
+  if (!transaction) {
+    logger.warn({
+      message: "Transaction not found",
+      transaction_id,
+      organizationId: organization.id,
+      requestId,
+    });
+    throw new Error("Transaction not found. Cannot add alert.");
+  }
+
+  const alert = await prisma.alert.create({
+    data: {
+      transaction_id,
+      reason,
+      organizationId: organization.id,
+    },
+  });
+
+  logger.info({
+    message: "Alert added successfully",
+    alertId: alert.id,
+    requestId,
+  });
+
+  return createResponse(true, alert);
+};
+
 // Delete an alert
 exports.deleteAlert = async (req, id) => {
   const { organizationId, requestId } = req;
