@@ -4,9 +4,7 @@ const { AuthorizationError } = require("@utils/errors");
 
 async function organizationContext(req, res, next) {
   try {
-    const organizationId =
-      req.organizationId ||
-      parseInt(req.headers["x-organization-id"] || req.params.id);
+    const organizationId = req.organizationId || parseInt(req.params.organizationId);
 
     if (!organizationId) {
       logger.warn({

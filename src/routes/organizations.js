@@ -12,7 +12,8 @@ const {
   getMembers,
   removeMember,
   generateApiKey,
-  validateApiKey,
+  getApiKey,
+  deleteApiKey,
 } = require("@controllers/organizationController");
 
 const createOrgSchema = Joi.object({
@@ -491,15 +492,139 @@ router.post(
  *         description: Internal server error
  */
 router.post(
-  "/:id/keys",
+  "/:organizationId/keys",
   apiLimiter,
   authenticate,
   organizationContext,
   authorize(["admin"]),
   async (req, res, next) => {
     try {
-      const result = await generateApiKey(req, parseInt(req.params.id));
+      const result = await generateApiKey(req, parseInt(req.params.organizationId));
       res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{organizationId}/keys:
+ *   get:
+ *     summary: Get API key for the organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: organizationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: API key retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     createdBy:
+ *                       type: integer
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     expiresAt:
+ *                       type: string
+ *                       format: date-time
+ *                     status:
+ *                       type: string
+ *                       example: "active"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/:organizationId/keys",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await getApiKey(req, parseInt(req.params.organizationId));
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{organizationId}/keys/{keyId}:
+ *   delete:
+ *     summary: Delete an API key for the organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: organizationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: path
+ *         name: keyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: API key deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "API key deleted successfully"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: API key or organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete(
+  "/:organizationId/keys/:keyId",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await deleteApiKey(req, parseInt(req.params.organizationId), parseInt(req.params.keyId));
+      res.status(200).json(result);
     } catch (error) {
       next(error);
     }

@@ -291,6 +291,17 @@ exports.generateApiKey = async (req, organizationId) => {
     throw err;
   }
 
+  // Check the number of existing API keys
+  const existingKeys = await prisma.apiKey.count({
+    where: { organizationId: parseInt(organizationId, 10) },
+  });
+
+  if (existingKeys >= 10) {
+    const err = new Error("Maximum number of API keys reached for this organization");
+    err.status = 409; // Conflict
+    throw err;
+  }
+
   // Generate API key
   const payload = {
     organizationId: parseInt(organizationId, 10),
@@ -336,4 +347,58 @@ exports.generateApiKey = async (req, organizationId) => {
     apiKey,
     expiresAt: payload.expiresAt,
   };
+};
+
+exports.getApiKey = async (req, organizationId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Fetching API keys",
+    organizationId,
+    requestId,
+  });
+
+  const apiKeys = await prisma.apiKey.findMany({
+    where: { organizationId: parseInt(organizationId) },
+  });
+
+  if (!apiKeys || apiKeys.length === 0) {
+    const err = new Error("No API keys found for this organization");
+    err.status = 404;
+    throw err;
+  }
+
+  logger.info({
+    message: "API keys retrieved successfully",
+    organizationId,
+    requestId,
+  });
+
+  return createResponse(true, apiKeys);
+};
+
+exports.deleteApiKey = async (req, organizationId, keyId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Deleting API key",
+    organizationId,
+    keyId,
+    requestId,
+  });
+
+  const apiKey = await prisma.apiKey.delete({
+    where: {
+      id: keyId,
+    },
+  });
+
+  logger.info({
+    message: "API key deleted successfully",
+    organizationId,
+    keyId,
+    requestId,
+  });
+
+  return createResponse(true, { message: "API key deleted successfully" });
 };
