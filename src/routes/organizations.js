@@ -11,6 +11,8 @@ const {
   addMember,
   getMembers,
   removeMember,
+  generateApiKey,
+  validateApiKey,
 } = require("@controllers/organizationController");
 
 const createOrgSchema = Joi.object({
@@ -448,6 +450,55 @@ router.post(
   async (req, res, next) => {
     try {
       const result = await addMember(req, parseInt(req.params.id));
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{organizationId}/keys:
+ *   post:
+ *     summary: Generate an API key for the organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: organizationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: API key generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 apiKey:
+ *                   type: string
+ *                   example: "your_generated_api_key"
+ *       403:
+ *         description: Forbidden - Not an admin of the organization
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/:id/keys",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await generateApiKey(req, parseInt(req.params.id));
       res.status(201).json(result);
     } catch (error) {
       next(error);

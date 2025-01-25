@@ -2,6 +2,8 @@ const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
 const Joi = require("joi");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
 // Validation schemas
 const createOrgSchema = Joi.object({
@@ -235,4 +237,103 @@ exports.removeMember = async (req, organizationId, userId) => {
   });
 
   return createResponse(true, { message: "Member removed successfully" });
+};
+
+exports.generateApiKey = async (req, organizationId) => {
+  const { requestId } = req;
+
+  // Validate user
+  if (!req.user || !req.user.id) {
+    logger.error({
+      message: "User not authenticated",
+      requestId,
+    });
+    const err = new Error("User not authenticated");
+    err.status = 401;
+    throw err;
+  }
+  const userId = req.user.id;
+
+  // Validate organization ID
+  if (isNaN(parseInt(organizationId, 10))) {
+    logger.error({
+      message: "Invalid organization ID",
+      organizationId,
+      userId,
+      requestId,
+    });
+    const err = new Error("Invalid organization ID");
+    err.status = 400;
+    throw err;
+  }
+
+  logger.info({
+    message: "Generating API key",
+    organizationId,
+    userId,
+    requestId,
+  });
+
+  // Check user permissions
+  const membership = await prisma.organizationMember.findFirst({
+    where: { organizationId: parseInt(organizationId, 10), userId },
+  });
+
+  if (!membership || membership.role !== "admin") {
+    logger.warn({
+      message: "Permission denied",
+      organizationId,
+      userId,
+      requestId,
+    });
+    const err = new Error("Permission denied");
+    err.status = 403;
+    throw err;
+  }
+
+  // Generate API key
+  const payload = {
+    organizationId: parseInt(organizationId, 10),
+    createdBy: userId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  const apiKey = jwt.sign(payload, process.env.API_KEY_SECRET, { algorithm: "HS256" });
+
+  // Hash the API key before storing it
+  const hashedKey = await bcrypt.hash(apiKey, 10);
+
+  // Save metadata to database
+  try {
+    await prisma.apiKey.create({
+      data: {
+        key: hashedKey,
+        organizationId: parseInt(organizationId, 10),
+        createdBy: userId,
+        expiresAt: payload.expiresAt,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error saving API key to database",
+      organizationId,
+      userId,
+      requestId,
+      error,
+    });
+    throw new Error("Failed to save API key");
+  }
+
+  logger.info({
+    message: "API key generated successfully",
+    organizationId,
+    userId,
+    requestId,
+  });
+
+  return {
+    apiKey,
+    expiresAt: payload.expiresAt,
+  };
 };
