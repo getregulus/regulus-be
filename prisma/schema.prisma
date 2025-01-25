@@ -8,41 +8,41 @@ datasource db {
 }
 
 model User {
-  id              Int           @id @default(autoincrement())
-  email           String        @unique
+  id              Int              @id @default(autoincrement())
+  email           String           @unique
   name            String
   password        String?
-  googleId        String?       @unique
-  role            String        @default("admin")
-  permissions     String        @default("[\"read\",\"write\"]")
+  googleId        String?          @unique
+  role            String           @default("admin")
+  permissions     String           @default("[\"read\",\"write\"]")
   lastLogin       DateTime?
-  createdAt       DateTime      @default(now())
-  twoFactorEnabled Boolean      @default(false)
+  createdAt       DateTime         @default(now())
+  twoFactorEnabled Boolean         @default(false)
   preferences     Preferences?
   plan            Plan?
-  auditLogs       AuditLog[]   
+  auditLogs       AuditLog[]
   organizations   OrganizationMember[]
+  apiKeys         ApiKey[]         @relation("UserApiKeys")
 
-  @@map("users")  
+  @@map("users")
 }
 
 model Preferences {
-  id                 Int      @id @default(autoincrement())
-  userId            Int      @unique
-  user              User     @relation(fields: [userId], references: [id])
-  emailNotifications Boolean  @default(true)
+  id              Int              @id @default(autoincrement())
+  userId          Int              @unique
+  emailNotifications Boolean       @default(true)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("preferences")
 }
 
 model Plan {
-  id         Int       @id @default(autoincrement())
-  userId     Int       @unique
-  user       User      @relation(fields: [userId], references: [id])
-  type       String    @default("free")
-  status     String    @default("active")
-  expiryDate DateTime?
-  features   String    @default("[]")
+  id              Int              @id @default(autoincrement())
+  type            String
+  status          String           @default("active")
+  expiryDate      DateTime?
+  features        Json?
+  user            User?            @relation(fields: [id], references: [id], onDelete: Cascade)
 
   @@map("plans")
 }
@@ -103,47 +103,59 @@ model Rule {
 }
 
 model AuditLog {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  action      String
-  target_id   Int?
-  target_type String?
-  timestamp   DateTime @default(now())
-  user        User     @relation(fields: [user_id], references: [id])
-  organizationId Int?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  id              Int              @id @default(autoincrement())
+  userId          Int
+  organizationId  Int
+  action          String
+  createdAt       DateTime         @default(now())
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("audit_logs")
-  @@index([organizationId])
-  @@index([timestamp])
 }
 
 model Organization {
-  id          Int       @id @default(autoincrement())
-  name        String
-  createdAt   DateTime  @default(now())
-  members     OrganizationMember[]
-  rules       Rule[]
-  alerts      Alert[]
-  transactions Transaction[]
-  watchlist   Watchlist[]
-  auditLogs   AuditLog[]
-  status      String    @default("active")
-  settings    Json?
+  id              Int              @id @default(autoincrement())
+  name            String
+  createdAt       DateTime         @default(now())
+  members         OrganizationMember[]
+  rules           Rule[]
+  alerts          Alert[]
+  transactions    Transaction[]
+  watchlist       Watchlist[]
+  auditLogs       AuditLog[]
+  status          String           @default("active")
+  settings        Json?
+  apiKeys         ApiKey[]         @relation("OrganizationApiKeys")
 
   @@map("organizations")
 }
 
+model ApiKey {
+  id              Int              @id @default(autoincrement())
+  key             String           @unique
+  organizationId  Int?
+  createdBy       Int
+  createdAt       DateTime         @default(now())
+  expiresAt       DateTime
+  status          String           @default("active")
+
+  organization    Organization?    @relation("OrganizationApiKeys", fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation("UserApiKeys", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
 model OrganizationMember {
-  id              Int          @id @default(autoincrement())
+  id              Int              @id @default(autoincrement())
   organizationId  Int
   userId          Int
-  role            String       @default("member")
-  joinedAt        DateTime     @default(now())
-  permissions     String       @default("[]")
-  status          String       @default("active")
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            String           @default("member")
+  joinedAt        DateTime         @default(now())
+  permissions     String           @default("[]")
+  status          String           @default("active")
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([userId])

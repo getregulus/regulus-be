@@ -2,6 +2,8 @@ const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
 const Joi = require("joi");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
 // Validation schemas
 const createOrgSchema = Joi.object({
@@ -235,4 +237,168 @@ exports.removeMember = async (req, organizationId, userId) => {
   });
 
   return createResponse(true, { message: "Member removed successfully" });
+};
+
+exports.generateApiKey = async (req, organizationId) => {
+  const { requestId } = req;
+
+  // Validate user
+  if (!req.user || !req.user.id) {
+    logger.error({
+      message: "User not authenticated",
+      requestId,
+    });
+    const err = new Error("User not authenticated");
+    err.status = 401;
+    throw err;
+  }
+  const userId = req.user.id;
+
+  // Validate organization ID
+  if (isNaN(parseInt(organizationId, 10))) {
+    logger.error({
+      message: "Invalid organization ID",
+      organizationId,
+      userId,
+      requestId,
+    });
+    const err = new Error("Invalid organization ID");
+    err.status = 400;
+    throw err;
+  }
+
+  logger.info({
+    message: "Generating API key",
+    organizationId,
+    userId,
+    requestId,
+  });
+
+  // Check user permissions
+  const membership = await prisma.organizationMember.findFirst({
+    where: { organizationId: parseInt(organizationId, 10), userId },
+  });
+
+  if (!membership || membership.role !== "admin") {
+    logger.warn({
+      message: "Permission denied",
+      organizationId,
+      userId,
+      requestId,
+    });
+    const err = new Error("Permission denied");
+    err.status = 403;
+    throw err;
+  }
+
+  // Check the number of existing API keys
+  const existingKeys = await prisma.apiKey.count({
+    where: { organizationId: parseInt(organizationId, 10) },
+  });
+
+  if (existingKeys >= 10) {
+    const err = new Error("Maximum number of API keys reached for this organization");
+    err.status = 409; // Conflict
+    throw err;
+  }
+
+  // Generate API key
+  const payload = {
+    organizationId: parseInt(organizationId, 10),
+    createdBy: userId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  const apiKey = jwt.sign(payload, process.env.API_KEY_SECRET, { algorithm: "HS256" });
+
+  // Hash the API key before storing it
+  const hashedKey = await bcrypt.hash(apiKey, 10);
+
+  // Save metadata to database
+  try {
+    await prisma.apiKey.create({
+      data: {
+        key: hashedKey,
+        organizationId: parseInt(organizationId, 10),
+        createdBy: userId,
+        expiresAt: payload.expiresAt,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error saving API key to database",
+      organizationId,
+      userId,
+      requestId,
+      error,
+    });
+    throw new Error("Failed to save API key");
+  }
+
+  logger.info({
+    message: "API key generated successfully",
+    organizationId,
+    userId,
+    requestId,
+  });
+
+  return {
+    apiKey,
+    expiresAt: payload.expiresAt,
+  };
+};
+
+exports.getApiKey = async (req, organizationId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Fetching API keys",
+    organizationId,
+    requestId,
+  });
+
+  const apiKeys = await prisma.apiKey.findMany({
+    where: { organizationId: parseInt(organizationId) },
+  });
+
+  if (!apiKeys || apiKeys.length === 0) {
+    const err = new Error("No API keys found for this organization");
+    err.status = 404;
+    throw err;
+  }
+
+  logger.info({
+    message: "API keys retrieved successfully",
+    organizationId,
+    requestId,
+  });
+
+  return createResponse(true, apiKeys);
+};
+
+exports.deleteApiKey = async (req, organizationId, keyId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Deleting API key",
+    organizationId,
+    keyId,
+    requestId,
+  });
+
+  const apiKey = await prisma.apiKey.delete({
+    where: {
+      id: keyId,
+    },
+  });
+
+  logger.info({
+    message: "API key deleted successfully",
+    organizationId,
+    keyId,
+    requestId,
+  });
+
+  return createResponse(true, { message: "API key deleted successfully" });
 };

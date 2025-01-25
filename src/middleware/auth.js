@@ -1,46 +1,50 @@
 const jwt = require("jsonwebtoken");
 const logger = require("@utils/logger");
-const { AuthenticationError, AuthorizationError } = require("@utils/errors");
+const { AuthenticationError } = require("@utils/errors");
 
 // Middleware to authenticate users
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const apiKey = req.headers['x-api-key'];
+
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      logger.error({
-        message: "Authentication failed - no token",
-        requestId: req.requestId,
-        path: req.path,
+    if (apiKey) {
+      // API Key authentication
+      const decoded = jwt.verify(apiKey, process.env.API_KEY_SECRET);
+      const apiKeyRecord = await prisma.apiKey.findFirst({
+        where: {
+          key: apiKey, // Hash and compare if stored hashed
+          status: "active",
+          organizationId: decoded.organizationId,
+        },
       });
-      throw new AuthenticationError("No token provided.");
+
+      if (!apiKeyRecord || new Date(decoded.expiresAt) < new Date()) {
+        throw new AuthenticationError("Invalid or expired API key.");
+      }
+
+      req.organizationId = decoded.organizationId;
+      req.userId = decoded.createdBy; // Optional, for audit purposes
+      return next();
     }
 
-    const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      logger.error({
-        message: "Authentication failed - empty token",
-        requestId: req.requestId,
-        path: req.path,
-      });
-      throw new AuthenticationError("No token provided.");
-    }
-
-    try {
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      // JWT authentication
+      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
       req.user = decoded;
-      next();
-    } catch (error) {
-      logger.error({
-        message: "Authentication failed - invalid token",
-        requestId: req.requestId,
-        path: req.path,
-        error: error.message,
-      });
-      throw new AuthenticationError("Invalid token.");
+      return next();
     }
+
+    throw new AuthenticationError("No token or API key provided.");
   } catch (error) {
+    logger.error({
+      message: "Authentication failed",
+      error: error.message,
+      path: req.path,
+      requestId: req.requestId,
+    });
     next(error);
   }
 };

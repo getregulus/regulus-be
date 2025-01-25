@@ -7,7 +7,7 @@ async function organizationContext(req, res, next) {
     const organizationId = parseInt(
       req.headers["x-organization-id"] || req.params.id
     );
-
+    
     if (!organizationId) {
       logger.warn({
         message: "Missing organization ID",
@@ -15,13 +15,13 @@ async function organizationContext(req, res, next) {
         userId: req.user?.id,
         path: req.path,
       });
-      throw new Error("Organization ID is required");
+      throw new Error("Organization ID is required.");
     }
 
     logger.info({
       message: "Checking organization access",
       organizationId,
-      userId: req.user.id,
+      userId: req.user?.id,
       requestId: req.requestId,
     });
 
@@ -29,7 +29,7 @@ async function organizationContext(req, res, next) {
       where: { id: organizationId },
       include: {
         members: {
-          where: { userId: req.user.id },
+          where: { userId: req.user?.id },
         },
       },
     });
@@ -38,7 +38,7 @@ async function organizationContext(req, res, next) {
       logger.warn({
         message: "Organization not found",
         organizationId,
-        userId: req.user.id,
+        userId: req.user?.id,
         requestId: req.requestId,
       });
       throw new AuthorizationError("Organization not found");
@@ -48,7 +48,7 @@ async function organizationContext(req, res, next) {
       logger.warn({
         message: "User not a member of organization",
         organizationId,
-        userId: req.user.id,
+        userId: req.user?.id,
         requestId: req.requestId,
       });
       throw new AuthorizationError("Not a member of this organization");
@@ -57,7 +57,7 @@ async function organizationContext(req, res, next) {
     logger.info({
       message: "Organization access granted",
       organizationId,
-      userId: req.user.id,
+      userId: req.user?.id,
       userRole: organization.members[0].role,
       requestId: req.requestId,
     });
