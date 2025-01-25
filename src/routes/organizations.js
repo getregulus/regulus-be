@@ -460,71 +460,22 @@ router.post(
 
 /**
  * @swagger
- * /organizations/{organizationId}/keys:
+ * /organizations/keys:
  *   post:
  *     summary: Generate an API key for the organization
  *     tags: [Organizations]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: organizationId
+ *       - in: header
+ *         name: x-organization-id
  *         required: true
  *         schema:
  *           type: integer
  *         description: Organization ID
  *     responses:
- *       200:
+ *       201:
  *         description: API key generated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 apiKey:
- *                   type: string
- *                   example: "your_generated_api_key"
- *       403:
- *         description: Forbidden - Not an admin of the organization
- *       404:
- *         description: Organization not found
- *       500:
- *         description: Internal server error
- */
-router.post(
-  "/:organizationId/keys",
-  apiLimiter,
-  authenticate,
-  organizationContext,
-  authorize(["admin"]),
-  async (req, res, next) => {
-    try {
-      const result = await generateApiKey(req, parseInt(req.params.organizationId));
-      res.status(201).json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * @swagger
- * /organizations/{organizationId}/keys:
- *   get:
- *     summary: Get API key for the organization
- *     tags: [Organizations]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: organizationId
- *         required: true
- *         schema:
- *           type: integer
- *         description: Organization ID
- *     responses:
- *       200:
- *         description: API key retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -536,19 +487,76 @@ router.post(
  *                 data:
  *                   type: object
  *                   properties:
- *                     id:
- *                       type: integer
- *                     createdBy:
- *                       type: integer
- *                     createdAt:
+ *                     apiKey:
  *                       type: string
- *                       format: date-time
- *                     expiresAt:
- *                       type: string
- *                       format: date-time
- *                     status:
- *                       type: string
- *                       example: "active"
+ *                       example: "your_generated_api_key"
+ *       403:
+ *         description: Forbidden - Not an admin of the organization
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/keys",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await generateApiKey(req, req.organization.id);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/keys:
+ *   get:
+ *     summary: Get API keys for the organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: API keys retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       createdBy:
+ *                         type: integer
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       expiresAt:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         example: "active"
  *       401:
  *         description: Unauthorized - Invalid or missing token
  *       404:
@@ -557,14 +565,14 @@ router.post(
  *         description: Internal server error
  */
 router.get(
-  "/:organizationId/keys",
+  "/keys",
   apiLimiter,
   authenticate,
   organizationContext,
   authorize(["admin"]),
   async (req, res, next) => {
     try {
-      const result = await getApiKey(req, parseInt(req.params.organizationId));
+      const result = await getApiKey(req, req.organization.id);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -574,15 +582,15 @@ router.get(
 
 /**
  * @swagger
- * /organizations/{organizationId}/keys/{keyId}:
+ * /organizations/keys/{keyId}:
  *   delete:
  *     summary: Delete an API key for the organization
  *     tags: [Organizations]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: organizationId
+ *       - in: header
+ *         name: x-organization-id
  *         required: true
  *         schema:
  *           type: integer
@@ -616,14 +624,14 @@ router.get(
  *         description: Internal server error
  */
 router.delete(
-  "/:organizationId/keys/:keyId",
+  "/keys/:keyId",
   apiLimiter,
   authenticate,
   organizationContext,
   authorize(["admin"]),
   async (req, res, next) => {
     try {
-      const result = await deleteApiKey(req, parseInt(req.params.organizationId), parseInt(req.params.keyId));
+      const result = await deleteApiKey(req, req.organization.id, parseInt(req.params.keyId));
       res.status(200).json(result);
     } catch (error) {
       next(error);
