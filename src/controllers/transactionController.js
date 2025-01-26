@@ -127,21 +127,15 @@ async function createTransaction(req, transactionData) {
         data: alertData,
       });
 
-      await logAudit(
-        transaction.user_id,
-        "Transaction Flagged",
-        organizationId,
-        transaction.transaction_id,
-        "transaction"
-      );
+      // Log flagged transaction
+      await logAudit(req, {
+        action: `Transaction Flagged: ${transaction.transaction_id}`,
+      });
     } else {
-      await logAudit(
-        transaction.user_id,
-        "Transaction Created",
-        organizationId,
-        transaction.transaction_id,
-        "transaction"
-      );
+      // Log created transaction
+      await logAudit(req, {
+        action: `Transaction Created: ${transaction.transaction_id}`,
+      });
     }
 
     return { createdTransaction, flagged };
