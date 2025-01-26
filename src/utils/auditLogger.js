@@ -1,31 +1,36 @@
 const prisma = require("./prisma");
 const logger = require("./logger");
 
-const logAudit = async (
-  userId,
-  action,
-  organizationId,
-  targetId,
-  targetType
-) => {
+/**
+ * Logs an action to the audit log
+ * @param {Object} req - The request object
+ * @param {Object} options - Details of the action
+ * @param {string} options.action - Description of the action performed
+ */
+const logAudit = async (req, { action }) => {
+  const { user, organization } = req;
+
+  if (!user || !organization) {
+    logger.error({
+      message: "Audit logging failed: Missing user or organization context",
+    });
+    return null;
+  }
+
   try {
     logger.info({
       message: "Creating audit log",
-      userId,
+      userId: user.id,
       action,
-      organizationId,
-      targetId,
-      targetType,
+      organizationId: organization.id,
     });
 
     const auditLog = await prisma.auditLog.create({
       data: {
-        user_id: userId,
+        organizationId: organization.id,
         action,
-        organizationId,
-        target_id: targetId,
-        target_type: targetType,
-        timestamp: new Date(),
+        userId: user.id,
+        createdAt: new Date(),
       },
     });
 
@@ -39,11 +44,9 @@ const logAudit = async (
     logger.error({
       message: "Failed to create audit log",
       error: error.message,
-      userId,
+      userId: user.id,
       action,
-      organizationId,
-      targetId,
-      targetType,
+      organizationId: organization.id,
     });
     // Don't throw error - audit logging should not break main functionality
     return null;

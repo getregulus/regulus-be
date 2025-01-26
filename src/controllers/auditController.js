@@ -2,8 +2,20 @@ const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
 
+/**
+ * Fetch all audit logs for the current organization
+ * @param {Object} req - The request object
+ * @returns {Object} The list of audit logs
+ */
 async function getAuditLogs(req) {
   const { organization, requestId } = req;
+
+  if (!organization || !organization.id) {
+    const error = new Error("Organization context is missing or invalid.");
+    error.status = 400; // Bad Request
+    throw error;
+  }
+
   const organizationId = organization.id;
 
   try {
@@ -15,15 +27,7 @@ async function getAuditLogs(req) {
 
     const auditLogs = await prisma.auditLog.findMany({
       where: { organizationId },
-      orderBy: { timestamp: "desc" },
-      select: {
-        id: true,
-        action: true,
-        user_id: true,
-        target_id: true,
-        target_type: true,
-        timestamp: true,
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     logger.info({
