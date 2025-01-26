@@ -14,6 +14,9 @@ const {
   generateApiKey,
   getApiKey,
   deleteApiKey,
+  getOrganizationDetails,
+  updateOrganizationDetails,
+  deleteOrganization,
 } = require("@controllers/organizationController");
 
 const createOrgSchema = Joi.object({
@@ -632,6 +635,195 @@ router.delete(
   async (req, res, next) => {
     try {
       const result = await deleteApiKey(req, req.organization.id, parseInt(req.params.keyId));
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{id}:
+ *   get:
+ *     summary: Get organization details
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: Organization details fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     members:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           userId:
+ *                             type: integer
+ *                           role:
+ *                             type: string
+ *                             enum: [admin, auditor]
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/:id",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  async (req, res, next) => {
+    try {
+      const result = await getOrganizationDetails(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{id}:
+ *   put:
+ *     summary: Update organization details
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Updated Organization Name"
+ *     responses:
+ *       200:
+ *         description: Organization updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put(
+  "/:id",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await updateOrganizationDetails(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{id}:
+ *   delete:
+ *     summary: Delete an organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: Organization deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Organization deleted successfully"
+ *       404:
+ *         description: Organization not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete(
+  "/:id",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await deleteOrganization(req, req.params.id);
       res.status(200).json(result);
     } catch (error) {
       next(error);
