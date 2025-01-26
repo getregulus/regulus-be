@@ -358,23 +358,28 @@ exports.getApiKey = async (req, organizationId) => {
     requestId,
   });
 
-  const apiKeys = await prisma.apiKey.findMany({
-    where: { organizationId: parseInt(organizationId) },
-  });
+  try {
+    const apiKeys = await prisma.apiKey.findMany({
+      where: { organizationId: parseInt(organizationId) },
+    });
 
-  if (!apiKeys || apiKeys.length === 0) {
-    const err = new Error("No API keys found for this organization");
-    err.status = 404;
-    throw err;
+    logger.info({
+      message: apiKeys.length > 0 ? "API keys retrieved successfully" : "No API keys found",
+      organizationId,
+      count: apiKeys.length,
+      requestId,
+    });
+
+    return createResponse(true, apiKeys);
+  } catch (error) {
+    logger.error({
+      message: "Error fetching API keys",
+      organizationId,
+      requestId,
+      error: error.message,
+    });
+    throw error;
   }
-
-  logger.info({
-    message: "API keys retrieved successfully",
-    organizationId,
-    requestId,
-  });
-
-  return createResponse(true, apiKeys);
 };
 
 exports.deleteApiKey = async (req, organizationId, keyId) => {

@@ -644,7 +644,7 @@ router.delete(
 
 /**
  * @swagger
- * /organizations/{id}:
+ * /organizations/{id}/details:
  *   get:
  *     summary: Get organization details
  *     tags: [Organizations]
@@ -700,7 +700,7 @@ router.delete(
  *         description: Internal server error
  */
 router.get(
-  "/:id",
+  "/:id/details",
   apiLimiter,
   authenticate,
   organizationContext,
