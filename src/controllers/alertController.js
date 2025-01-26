@@ -1,9 +1,10 @@
 const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
+const { logAudit } = require("@utils/auditLogger");
 
 // Fetch all alerts for an organization
-exports.getAlerts = async function(req) {
+exports.getAlerts = async function (req) {
   const { organization, requestId } = req;
   const organizationId = organization.id;
 
@@ -18,8 +19,8 @@ exports.getAlerts = async function(req) {
       where: { organizationId },
       orderBy: { flagged_at: "desc" },
       include: {
-        transaction: true
-      }
+        transaction: true,
+      },
     });
 
     logger.info({
@@ -33,7 +34,7 @@ exports.getAlerts = async function(req) {
       message: "Error fetching alerts",
       organizationId,
       requestId,
-      error
+      error,
     });
     throw error;
   }
@@ -80,24 +81,29 @@ exports.addAlert = async (req) => {
     requestId,
   });
 
+  // Log the action
+  await logAudit(req, {
+    action: `Added alert for transaction ${transaction_id}`,
+  });
+
   return createResponse(true, alert);
 };
 
 // Delete an alert
 exports.deleteAlert = async (req, id) => {
-  const { organizationId, requestId } = req;
+  const { organization, requestId } = req;
 
   logger.info({
     message: "Attempting to delete alert",
     alertId: id,
-    organizationId,
+    organizationId: organization.id,
     requestId,
   });
 
   const deletedAlert = await prisma.alert.delete({
     where: {
       id: parseInt(id),
-      organizationId,
+      organizationId: organization.id,
     },
   });
 
@@ -105,6 +111,11 @@ exports.deleteAlert = async (req, id) => {
     message: "Alert deleted successfully",
     alertId: id,
     requestId,
+  });
+
+  // Log the action
+  await logAudit(req, {
+    action: `Deleted alert with ID ${id}`,
   });
 
   return createResponse(true, deletedAlert);
