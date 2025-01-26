@@ -358,23 +358,28 @@ exports.getApiKey = async (req, organizationId) => {
     requestId,
   });
 
-  const apiKeys = await prisma.apiKey.findMany({
-    where: { organizationId: parseInt(organizationId) },
-  });
+  try {
+    const apiKeys = await prisma.apiKey.findMany({
+      where: { organizationId: parseInt(organizationId) },
+    });
 
-  if (!apiKeys || apiKeys.length === 0) {
-    const err = new Error("No API keys found for this organization");
-    err.status = 404;
-    throw err;
+    logger.info({
+      message: apiKeys.length > 0 ? "API keys retrieved successfully" : "No API keys found",
+      organizationId,
+      count: apiKeys.length,
+      requestId,
+    });
+
+    return createResponse(true, apiKeys);
+  } catch (error) {
+    logger.error({
+      message: "Error fetching API keys",
+      organizationId,
+      requestId,
+      error: error.message,
+    });
+    throw error;
   }
-
-  logger.info({
-    message: "API keys retrieved successfully",
-    organizationId,
-    requestId,
-  });
-
-  return createResponse(true, apiKeys);
 };
 
 exports.deleteApiKey = async (req, organizationId, keyId) => {
@@ -401,4 +406,124 @@ exports.deleteApiKey = async (req, organizationId, keyId) => {
   });
 
   return createResponse(true, { message: "API key deleted successfully" });
+};
+
+exports.getOrganizationDetails = async (req, organizationId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Fetching organization details",
+    organizationId,
+    requestId,
+  });
+
+  try {
+    const organization = await prisma.organization.findUnique({
+      where: { id: parseInt(organizationId) },
+      include: {
+        members: {
+          select: {
+            userId: true,
+            role: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!organization) {
+      const error = new Error("Organization not found");
+      error.status = 404;
+      throw error;
+    }
+
+    logger.info({
+      message: "Organization details fetched successfully",
+      organizationId,
+      requestId,
+    });
+
+    return createResponse(true, organization);
+  } catch (error) {
+    logger.error({
+      message: "Error fetching organization details",
+      organizationId,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+};
+
+exports.updateOrganizationDetails = async (req, organizationId) => {
+  const { body, requestId } = req;
+
+  logger.info({
+    message: "Updating organization details",
+    organizationId,
+    updates: body,
+    requestId,
+  });
+
+  try {
+    const updatedOrganization = await prisma.organization.update({
+      where: { id: parseInt(organizationId) },
+      data: body,
+    });
+
+    logger.info({
+      message: "Organization updated successfully",
+      organizationId,
+      requestId,
+    });
+
+    return createResponse(true, updatedOrganization);
+  } catch (error) {
+    logger.error({
+      message: "Error updating organization details",
+      organizationId,
+      updates: body,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+};
+
+exports.deleteOrganization = async (req, organizationId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Deleting organization",
+    organizationId,
+    requestId,
+  });
+
+  try {
+    await prisma.organization.delete({
+      where: { id: parseInt(organizationId) },
+    });
+
+    logger.info({
+      message: "Organization deleted successfully",
+      organizationId,
+      requestId,
+    });
+
+    return createResponse(true, { message: "Organization deleted successfully" });
+  } catch (error) {
+    logger.error({
+      message: "Error deleting organization",
+      organizationId,
+      requestId,
+      error,
+    });
+    throw error;
+  }
 };
