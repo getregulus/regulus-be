@@ -1,6 +1,7 @@
 const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
+const { logAudit } = require("@utils/auditLogger");
 const Joi = require("joi");
 const { ValidationError } = require("joi");
 
@@ -12,7 +13,7 @@ const ruleSchema = Joi.object({
 // Create a new rule
 async function createRule(req) {
   const { organization, body, requestId } = req;
-  
+
   const { error } = ruleSchema.validate(body);
   if (error) {
     const err = new ValidationError(error.details[0].message);
@@ -38,6 +39,11 @@ async function createRule(req) {
       message: "Rule created successfully",
       ruleId: rule.id,
       requestId,
+    });
+
+    // Log the action
+    await logAudit(req, {
+      action: `Created rule: ${body.rule_name}`,
     });
 
     return createResponse(true, rule);
@@ -120,6 +126,11 @@ async function updateRule(req, id) {
       requestId,
     });
 
+    // Log the action
+    await logAudit(req, {
+      action: `Updated rule: ${rule_name || id}`,
+    });
+
     return createResponse(true, updatedRule);
   } catch (error) {
     logger.error({
@@ -155,6 +166,11 @@ async function deleteRule(req, id) {
       message: "Rule deleted successfully",
       ruleId: id,
       requestId,
+    });
+
+    // Log the action
+    await logAudit(req, {
+      action: `Deleted rule with ID: ${id}`,
     });
 
     return createResponse(true, { id });
