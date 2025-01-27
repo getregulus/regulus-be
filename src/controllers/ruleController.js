@@ -7,57 +7,57 @@ const { ValidationError } = require("joi");
 
 const ruleSchema = Joi.object({
   rule_name: Joi.string().required(),
-  condition: Joi.string().required(),
+  field: Joi.string()
+    .valid("amount", "currency", "country", "user_id", "transaction_id")
+    .required(),
+  operator: Joi.string()
+    .valid(
+      "GREATER_THAN",
+      "LESS_THAN",
+      "GREATER_THAN_OR_EQUAL",
+      "LESS_THAN_OR_EQUAL",
+      "EQUAL",
+      "NOT_EQUAL",
+      "IN"
+    )
+    .required(),
+  value: Joi.string().required(),
 });
 
 // Create a new rule
-async function createRule(req) {
+const createRule = async (req) => {
   const { organization, body, requestId } = req;
 
-  const { error } = ruleSchema.validate(body);
+  const { error, value } = ruleSchema.validate(body);
   if (error) {
-    const err = new ValidationError(error.details[0].message);
-    throw err;
+    const errorMessage = error.details.map((d) => d.message).join(", ");
+    logger.warn({
+      message: "Validation failed for rule creation",
+      errors: errorMessage,
+      requestBody: body,
+      requestId,
+    });
+    throw new ValidationError(errorMessage);
   }
 
-  try {
-    logger.info({
-      message: "Creating rule",
-      ruleName: body.rule_name,
-      requestId,
-    });
-
-    const rule = await prisma.rule.create({
-      data: {
-        rule_name: body.rule_name,
-        condition: body.condition,
-        organizationId: organization.id,
-      },
-    });
-
-    logger.info({
-      message: "Rule created successfully",
-      ruleId: rule.id,
-      requestId,
-    });
-
-    // Log the action
-    await logAudit(req, {
-      action: `Created rule: ${body.rule_name}`,
-    });
-
-    return createResponse(true, rule);
-  } catch (error) {
-    logger.error({
-      message: "Error creating rule",
-      ruleName: body.rule_name,
+  const rule = await prisma.rule.create({
+    data: {
+      rule_name: value.rule_name,
+      field: value.field,
+      operator: value.operator,
+      value: value.value,
       organizationId: organization.id,
-      requestId,
-      error,
-    });
-    throw error;
-  }
-}
+    },
+  });
+
+  logger.info({
+    message: "Rule created successfully",
+    ruleId: rule.id,
+    requestId,
+  });
+
+  return createResponse(true, rule);
+};
 
 // Get all rules for an organization
 async function getRules(req) {
@@ -72,7 +72,7 @@ async function getRules(req) {
 
     const rules = await prisma.rule.findMany({
       where: { organizationId: organization.id },
-      orderBy: { created_at: "desc" },
+      orderBy: { createdAt: "desc" },
     });
 
     logger.info({
@@ -96,9 +96,9 @@ async function getRules(req) {
 // Update an existing rule
 async function updateRule(req, id) {
   const { organization, body, requestId } = req;
-  const { rule_name, condition } = body;
 
-  if (!rule_name && !condition) {
+  // Ensure at least one field is provided for update
+  if (!body.rule_name && !body.field && !body.operator && !body.value) {
     const err = new Error("No fields to update.");
     err.name = "ValidationError";
     throw err;
@@ -108,16 +108,22 @@ async function updateRule(req, id) {
     logger.info({
       message: "Updating rule",
       ruleId: id,
-      ruleName: rule_name,
+      requestBody: body,
       requestId,
     });
+
+    const data = {};
+    if (body.rule_name) data.rule_name = body.rule_name;
+    if (body.field) data.field = body.field;
+    if (body.operator) data.operator = body.operator;
+    if (body.value) data.value = body.value;
 
     const updatedRule = await prisma.rule.update({
       where: {
         id: parseInt(id),
         organizationId: organization.id,
       },
-      data: { rule_name, condition },
+      data,
     });
 
     logger.info({
@@ -128,7 +134,7 @@ async function updateRule(req, id) {
 
     // Log the action
     await logAudit(req, {
-      action: `Updated rule: ${rule_name || id}`,
+      action: `Updated rule: ${body.rule_name || id}`,
     });
 
     return createResponse(true, updatedRule);
