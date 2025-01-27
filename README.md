@@ -42,6 +42,16 @@ DB_NAME=regulus
 LOG_LEVEL=info
 ```
 
+### Seeding the Database
+
+To seed the database with initial data, run the following command:
+
+```bash
+npm run seed
+```
+
+This command will execute the seed script located in the `prisma` directory and populate your database with predefined data.
+
 #### Start the Application
 Run the app using Docker:
 
