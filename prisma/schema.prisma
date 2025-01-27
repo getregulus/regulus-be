@@ -90,13 +90,38 @@ model Watchlist {
   @@map("watchlist")
 }
 
+enum TransactionField {
+  amount
+  currency
+  country
+  user_id
+  transaction_id
+
+  @@map("transaction_field")
+}
+
+enum RuleOperator {
+  GREATER_THAN
+  LESS_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN_OR_EQUAL
+  EQUAL
+  NOT_EQUAL
+  IN
+
+  @@map("rule_operator")
+}
+
 model Rule {
   id             Int          @id @default(autoincrement())
   rule_name      String
-  condition      String
-  created_at     DateTime     @default(now())
-  organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  field           TransactionField
+  operator        RuleOperator
+  value           String
+  organizationId  Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([rule_name, organizationId])
   @@map("rules")

@@ -2,64 +2,46 @@ const logger = require("./logger");
 const { ValidationError } = require("./errors");
 
 // Rule operators and their implementations
-const operators = {
-  ">": (a, b) => a > b,
-  "<": (a, b) => a < b,
-  ">=": (a, b) => a >= b,
-  "<=": (a, b) => a <= b,
-  "==": (a, b) => a == b,
-  "!=": (a, b) => a != b,
-  in: (a, b) => b.includes(a),
-  contains: (a, b) => a.includes(b),
-  startsWith: (a, b) => a.startsWith(b),
-  endsWith: (a, b) => a.endsWith(b),
-};
-
-const parseCondition = (condition) => {
-  try {
-    const parts = condition.trim().split(/\s+/);
-    if (parts.length < 3) {
-      throw new ValidationError("Invalid rule condition format");
-    }
-
-    const [field, operator, ...valueParts] = parts;
-    const value = valueParts.join(" ");
-
-    if (!operators[operator]) {
-      throw new ValidationError(`Unsupported operator: ${operator}`);
-    }
-
-    return { field, operator, value };
-  } catch (error) {
-    logger.error({
-      message: "Error parsing rule condition",
-      condition,
-      error: error.message,
-    });
-    throw error;
-  }
+const operatorMappings = {
+  GREATER_THAN: (a, b) => a > b,
+  LESS_THAN: (a, b) => a < b,
+  GREATER_THAN_OR_EQUAL: (a, b) => a >= b,
+  LESS_THAN_OR_EQUAL: (a, b) => a <= b,
+  EQUAL: (a, b) => a == b,
+  NOT_EQUAL: (a, b) => a != b,
+  IN: (a, b) => b.includes(a),
 };
 
 const evaluateCondition = (transaction, condition) => {
-  const { field, operator, value } = parseCondition(condition);
+  const { field, operator, value } = condition;
 
+  // Ensure the field exists in the transaction
   if (!(field in transaction)) {
     logger.warn({
       message: "Field not found in transaction",
       field,
       transactionId: transaction.transaction_id,
     });
-    return false;
+    throw new ValidationError(
+      `Field "${field}" is not found in the transaction.`
+    );
+  }
+
+  // Ensure the operator is valid
+  const operatorFunction = operatorMappings[operator];
+  if (!operatorFunction) {
+    throw new ValidationError(`Unsupported operator: ${operator}`);
   }
 
   try {
-    // Convert value based on field type
+    // Parse the value based on the field type
     let parsedValue = value;
     if (typeof transaction[field] === "number") {
       parsedValue = Number(value);
     }
 
-    const result = operators[operator](transaction[field], parsedValue);
+    // Evaluate the condition
+    const result = operatorFunction(transaction[field], parsedValue);
 
     logger.debug({
       message: "Rule condition evaluated",
@@ -78,10 +60,11 @@ const evaluateCondition = (transaction, condition) => {
       condition: { field, operator, value },
       error: error.message,
     });
-    return false;
+    throw error;
   }
 };
 
+// Evaluate a transaction against all rules
 const evaluateTransaction = (transaction, rules) => {
   logger.info({
     message: "Evaluating transaction against rules",
@@ -96,7 +79,7 @@ const evaluateTransaction = (transaction, rules) => {
 
   for (const rule of rules) {
     try {
-      const matches = evaluateCondition(transaction, rule.condition);
+      const matches = evaluateCondition(transaction, rule);
 
       if (matches) {
         results.flagged = true;
@@ -130,6 +113,5 @@ const evaluateTransaction = (transaction, rules) => {
 
 module.exports = {
   evaluateTransaction,
-  parseCondition,
   evaluateCondition,
 };
