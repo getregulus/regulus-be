@@ -61,29 +61,40 @@ docker-compose up --build
 
 ## **API Endpoints**
 
-Transactions
+### Transactions
+- **GET** `/transactions`: Fetch all transactions.
+- **POST** `/transactions`: Create and evaluate a transaction.
 
-- GET ```/transactions```: Fetch all transactions.
-- POST ```/transactions```: Create and evaluate a transaction.
+### Alerts
+- **GET** `/alerts`: Retrieve all alerts.
+- **DELETE** `/alerts/:id`: Delete a specific alert by ID.
 
-Alerts
+### Rules
+- **GET** `/rules`: Fetch all custom rules.
+- **POST** `/rules`: Add a new rule.
+- **PUT** `/rules/:id`: Update an existing rule by ID.
+- **DELETE** `/rules/:id`: Remove a rule by ID.
 
-- GET ```/alerts```: Retrieve all alerts.
-- DELETE ```/alerts/:id``` : Delete a specific alert.
+### Watchlist
+- **GET** `/watchlist`: Retrieve all watchlist entries.
+- **POST** `/watchlist`: Add a new watchlist entry.
+- **DELETE** `/watchlist/:id`: Remove a watchlist entry by ID.
 
-Rules
+### Organizations
+- **GET** `/organizations`: Fetch all organizations.
+- **POST** `/organizations`: Create a new organization.
+- **GET** `/organizations/:id`: Fetch a specific organization by ID.
+- **PUT** `/organizations/:id`: Update an existing organization by ID.
+- **DELETE** `/organizations/:id`: Remove an organization by ID.
 
-- GET ```/rules```: Fetch all custom rules.
-- POST ```/rules```: Add a new rule.
-- PUT ```/rules/:id```: Update an existing rule.
-- DELETE ```/rules/:id```: Remove a rule by ID.
+### Users
+- **GET** `/users`: Fetch all users.
+- **POST** `/users`: Create a new user.
+- **GET** `/users/:id`: Fetch a specific user by ID.
+- **PUT** `/users/:id`: Update an existing user by ID.
+- **DELETE** `/users/:id`: Remove a user by ID.
 
-Watchlist
-- GET ```/watchlist```: Retrieve all watchlist entries.
-- POST ```/watchlist```: Add a new watchlist entry.
-- DELETE ```/watchlist/:id```: Remove a watchlist entry by ID.
-
-Swagger Documentation
+### Swagger Documentation
 Interactive API documentation is available at:
 ```
 http://localhost:3000/api-docs
