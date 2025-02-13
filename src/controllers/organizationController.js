@@ -5,6 +5,8 @@ const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
+const defaultRules = require("@utils/defaultRules");
+
 // Validation schemas
 const createOrgSchema = Joi.object({
   name: Joi.string().required().min(3).max(100),
@@ -52,6 +54,14 @@ exports.createOrganization = async (req) => {
     message: "Organization created successfully",
     organizationId: organization.id,
     requestId,
+  });
+
+  // Insert default rules
+  await prisma.rule.createMany({
+    data: defaultRules.map((rule) => ({
+      ...rule,
+      organizationId: organization.id,
+    })),
   });
 
   return createResponse(true, organization);
@@ -297,7 +307,9 @@ exports.generateApiKey = async (req, organizationId) => {
   });
 
   if (existingKeys >= 10) {
-    const err = new Error("Maximum number of API keys reached for this organization");
+    const err = new Error(
+      "Maximum number of API keys reached for this organization"
+    );
     err.status = 409; // Conflict
     throw err;
   }
@@ -307,10 +319,14 @@ exports.generateApiKey = async (req, organizationId) => {
     organizationId: parseInt(organizationId, 10),
     createdBy: userId,
     createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: new Date(
+      Date.now() + 6 * 30 * 24 * 60 * 60 * 1000
+    ).toISOString(),
   };
 
-  const apiKey = jwt.sign(payload, process.env.API_KEY_SECRET, { algorithm: "HS256" });
+  const apiKey = jwt.sign(payload, process.env.API_KEY_SECRET, {
+    algorithm: "HS256",
+  });
 
   // Hash the API key before storing it
   const hashedKey = await bcrypt.hash(apiKey, 10);
@@ -364,7 +380,10 @@ exports.getApiKey = async (req, organizationId) => {
     });
 
     logger.info({
-      message: apiKeys.length > 0 ? "API keys retrieved successfully" : "No API keys found",
+      message:
+        apiKeys.length > 0
+          ? "API keys retrieved successfully"
+          : "No API keys found",
       organizationId,
       count: apiKeys.length,
       requestId,
@@ -516,7 +535,9 @@ exports.deleteOrganization = async (req, organizationId) => {
       requestId,
     });
 
-    return createResponse(true, { message: "Organization deleted successfully" });
+    return createResponse(true, {
+      message: "Organization deleted successfully",
+    });
   } catch (error) {
     logger.error({
       message: "Error deleting organization",
