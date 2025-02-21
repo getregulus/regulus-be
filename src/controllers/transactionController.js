@@ -83,8 +83,25 @@ async function createTransaction(req, transactionData) {
   // Start a Prisma transaction
   const result = await prisma.$transaction(async (tx) => {
     // Check against the watchlist
-    const { flagged: watchlistFlagged, reasons: watchlistReasons } =
-      await checkWatchlist(transaction);
+    const watchlistMatches = await tx.watchlist.findMany({
+      where: {
+        OR: [
+          {
+            type: 'USER',
+            value: transaction.user_id
+          },
+          {
+            type: 'COUNTRY',
+            value: transaction.country
+          }
+        ]
+      }
+    });
+
+    const watchlistFlagged = watchlistMatches.length > 0;
+    const watchlistReasons = watchlistMatches.map(match => 
+      `Watchlist match: ${match.type} (${match.value}) - ${match.description || match.risk_level} risk`
+    );
 
     logger.info({
       message: "Watchlist check completed",

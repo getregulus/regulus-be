@@ -1,26 +1,48 @@
-const db = require("@models/db");
+const prisma = require("./prisma");
+const logger = require("./logger");
 
-const checkWatchlist = async (transaction) => {
-  const { rows: watchlist } = await db.query("SELECT * FROM watchlist");
+async function checkWatchlist(transaction) {
+  try {
+    // Check both user and country against watchlist
+    const watchlistMatches = await prisma.watchlist.findMany({
+      where: {
+        OR: [
+          {
+            type: 'USER',
+            value: transaction.user_id
+          },
+          {
+            type: 'COUNTRY',
+            value: transaction.country
+          }
+        ]
+      }
+    });
 
-  const flaggedReasons = [];
+    const flagged = watchlistMatches.length > 0;
+    const reasons = watchlistMatches.map(match => 
+      `Watchlist match: ${match.type} (${match.value}) - ${match.description || match.risk_level} risk`
+    );
 
-  for (const item of watchlist) {
-    if (item.type === "user" && item.value === transaction.user_id) {
-      flaggedReasons.push(`User ${transaction.user_id} is on the watchlist.`);
-    }
-    if (item.type === "country" && item.value === transaction.country) {
-      flaggedReasons.push(
-        `Country ${transaction.country} is on the watchlist.`
-      );
-    }
-    // Add more checks as needed
+    return {
+      flagged,
+      reasons
+    };
+  } catch (error) {
+    logger.error({
+      message: "Error checking watchlist",
+      error,
+      transactionId: transaction.transaction_id
+    });
+    
+    // Return safe default if watchlist check fails
+    return {
+      flagged: false,
+      reasons: []
+    };
   }
+}
 
-  return {
-    flagged: flaggedReasons.length > 0,
-    reasons: flaggedReasons,
-  };
+module.exports = {
+  checkWatchlist
 };
-
-module.exports = { checkWatchlist };

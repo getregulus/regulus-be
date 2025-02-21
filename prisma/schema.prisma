@@ -80,14 +80,19 @@ model Alert {
 }
 
 model Watchlist {
-  id             Int          @id @default(autoincrement())
-  type           String
-  value          String
-  added_at       DateTime     @default(now())
+  id             Int      @id @default(autoincrement())
+  name           String
+  type           String   // e.g., "USER", "COUNTRY"
+  value          String   // The actual value to match against
+  risk_level     String   // e.g., "HIGH", "MEDIUM", "LOW"
+  description    String?
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@map("watchlist")
+  @@index([organizationId])
+  @@index([type, value])
 }
 
 enum TransactionField {
