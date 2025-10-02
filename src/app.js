@@ -14,6 +14,7 @@ const ruleRoutes = require("@routes/rules");
 const alertRoutes = require("@routes/alerts");
 const watchlistRoutes = require("@routes/watchlist");
 const auditRoutes = require("@routes/audit");
+const channelRoutes = require("@routes/channels");
 
 const app = express();
 // Middleware
@@ -45,6 +46,7 @@ app.use("/rules", ruleRoutes);
 app.use("/alerts", alertRoutes);
 app.use("/watchlist", watchlistRoutes);
 app.use("/audit", auditRoutes);
+app.use("/channels", channelRoutes);
 
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

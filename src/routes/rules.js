@@ -54,9 +54,9 @@ const updateRuleSchema = Joi.object({
 
 /**
  * @swagger
- * /rules/{id}:
- *   put:
- *     summary: Update a rule
+ * /rules:
+ *   get:
+ *     summary: Get all rules for an organization
  *     tags: [Rules]
  *     security:
  *       - bearerAuth: []
@@ -66,30 +66,9 @@ const updateRuleSchema = Joi.object({
  *         required: true
  *         schema:
  *           type: string
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             minProperties: 1
- *             properties:
- *               rule_name:
- *                 type: string
- *                 minLength: 3
- *                 maxLength: 100
- *               condition:
- *                 type: string
- *                 minLength: 3
- *                 maxLength: 500
  *     responses:
  *       200:
- *         description: Rule updated successfully
+ *         description: Rules retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -99,13 +78,9 @@ const updateRuleSchema = Joi.object({
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/Rule'
- *       400:
- *         description: Invalid input data
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Rule'
  *       401:
  *         description: Unauthorized - Invalid or missing token
  *         content:
@@ -114,82 +89,6 @@ const updateRuleSchema = Joi.object({
  *               $ref: '#/components/schemas/Error'
  *       403:
  *         description: Forbidden - Invalid organization or insufficient permissions
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       404:
- *         description: Rule not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       409:
- *         description: Rule name already exists in organization
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       429:
- *         description: Too many requests
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *
- *   delete:
- *     summary: Delete a rule
- *     tags: [Rules]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: x-organization-id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Rule deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     message:
- *                       type: string
- *                       example: "Rule deleted successfully"
- *       401:
- *         description: Unauthorized - Invalid or missing token
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       403:
- *         description: Forbidden - Invalid organization or insufficient permissions
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       404:
- *         description: Rule not found
  *         content:
  *           application/json:
  *             schema:

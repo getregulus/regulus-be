@@ -127,6 +127,7 @@ model Rule {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptions   Subscription[]
 
   @@unique([rule_name, organizationId])
   @@map("rules")
@@ -157,6 +158,7 @@ model Organization {
   status          String           @default("active")
   settings        Json?
   apiKeys         ApiKey[]         @relation("OrganizationApiKeys")
+  channels        Channel[]
 
   @@map("organizations")
 }
@@ -191,4 +193,38 @@ model OrganizationMember {
   @@index([userId])
   @@index([organizationId])
   @@map("organization_members")
+}
+
+model Channel {
+  id              Int              @id @default(autoincrement())
+  channelId       String           @unique
+  channelType     String           // e.g., "slack", "webhook", "email"
+  name            String
+  config          Json?            // Store channel-specific config (webhook URL, tokens, etc.)
+  status          String           @default("active")
+  organizationId  Int
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptions   Subscription[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([channelType])
+  @@map("channels")
+}
+
+model Subscription {
+  id              Int              @id @default(autoincrement())
+  channelId       Int
+  ruleId          Int
+  enabled         Boolean          @default(true)
+  channel         Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  rule            Rule             @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([channelId, ruleId])
+  @@index([channelId])
+  @@index([ruleId])
+  @@map("subscriptions")
 }
