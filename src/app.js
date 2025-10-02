@@ -33,7 +33,7 @@ app.use(
         : process.env.CORS_ORIGIN
       : "*",
     methods: ["GET", "POST", "PUT", "DELETE"], // Allowed HTTP methods
-    allowedHeaders: ["Content-Type", "Authorization"], // Allowed headers
+    allowedHeaders: ["Content-Type", "Authorization", "x-organization-id", "X-Organization-ID"], // Allowed headers
   })
 );
 

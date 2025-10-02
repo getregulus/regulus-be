@@ -5,6 +5,7 @@ const { checkWatchlist } = require("@utils/watchlistCheck");
 const logger = require("@utils/logger");
 const { logAudit } = require("@utils/auditLogger");
 const { createResponse } = require("@utils/responseHandler");
+const { sendAlertNotifications } = require("@utils/notificationService");
 
 const transactionSchema = Joi.object({
   transaction_id: Joi.string().required(),
@@ -116,7 +117,7 @@ async function createTransaction(req, transactionData) {
     });
 
     // Evaluate transaction
-    const { flagged: rulesFlagged, reasons: ruleReasons } = evaluateTransaction(
+    const { flagged: rulesFlagged, reasons: ruleReasons, matchedRules } = evaluateTransaction(
       transaction,
       rules
     );
@@ -155,7 +156,7 @@ async function createTransaction(req, transactionData) {
       });
     }
 
-    return { createdTransaction, flagged };
+    return { createdTransaction, flagged, reasons, matchedRules };
   });
 
   logger.info({
@@ -164,6 +165,42 @@ async function createTransaction(req, transactionData) {
     flagged: result.flagged,
     requestId,
   });
+
+  // TODO Will add BullMQ 
+  // Send notifications asynchronously (don't block the response)
+  if (result.flagged && result.matchedRules && result.matchedRules.length > 0) {
+    // Send notifications for each matched rule
+    setImmediate(async () => {
+      try {
+        // Get the created alerts
+        const alerts = await prisma.alert.findMany({
+          where: {
+            transaction_id: transaction.transaction_id,
+            organizationId,
+          },
+        });
+
+        // Send notification for each matched rule
+        for (const rule of result.matchedRules) {
+          const relevantAlert = alerts.find(a => a.reason.includes(rule.rule_name));
+          if (relevantAlert) {
+            await sendAlertNotifications(
+              relevantAlert,
+              result.createdTransaction,
+              rule,
+              organizationId
+            );
+          }
+        }
+      } catch (error) {
+        logger.error({
+          message: "Error sending alert notifications",
+          transactionId: transaction.transaction_id,
+          error: error.message,
+        });
+      }
+    });
+  }
 
   return createResponse(true, {
     transaction: result.createdTransaction,
