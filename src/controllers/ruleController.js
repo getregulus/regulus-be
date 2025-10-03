@@ -72,6 +72,23 @@ async function getRules(req) {
 
     const rules = await prisma.rule.findMany({
       where: { organizationId: organization.id },
+      include: {
+        subscriptions: {
+          where: {
+            enabled: true,
+          },
+          include: {
+            channel: {
+              select: {
+                id: true,
+                channelId: true,
+                name: true,
+                channelType: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 

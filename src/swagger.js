@@ -65,6 +65,10 @@ const options = {
         name: "Watchlist",
         description: "Watchlist management endpoints",
       },
+      {
+        name: "Channels",
+        description: "Integration channel management endpoints",
+      },
     ],
   },
   apis: ["./src/routes/*.js", "./src/swagger/schemas.js"],

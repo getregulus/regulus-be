@@ -75,6 +75,7 @@ const evaluateTransaction = (transaction, rules) => {
   const results = {
     flagged: false,
     reasons: [],
+    matchedRules: [],
   };
 
   for (const rule of rules) {
@@ -84,6 +85,7 @@ const evaluateTransaction = (transaction, rules) => {
       if (matches) {
         results.flagged = true;
         results.reasons.push(rule.rule_name);
+        results.matchedRules.push(rule);
 
         logger.info({
           message: "Transaction matched rule",
