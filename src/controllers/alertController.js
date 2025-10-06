@@ -120,3 +120,77 @@ exports.deleteAlert = async (req, id) => {
 
   return createResponse(true, deletedAlert);
 };
+
+// Export alerts as CSV
+exports.exportAlertsCSV = async (req) => {
+  const { organization, requestId } = req;
+  const organizationId = organization.id;
+
+  try {
+    logger.info({
+      message: "Exporting alerts as CSV for organization",
+      organizationId,
+      requestId,
+    });
+
+    const alerts = await prisma.alert.findMany({
+      where: { organizationId },
+      orderBy: { flagged_at: "desc" },
+      include: {
+        transaction: true,
+      },
+    });
+
+    // CSV header
+    const headers = [
+      "Alert ID",
+      "Transaction ID",
+      "User ID",
+      "Amount",
+      "Currency",
+      "Country",
+      "Transaction Timestamp",
+      "Alert Reason",
+      "Flagged At",
+    ];
+
+    // Convert alerts to CSV rows
+    const rows = alerts.map((alert) => [
+      alert.id,
+      alert.transaction_id,
+      alert.transaction.user_id,
+      alert.transaction.amount,
+      alert.transaction.currency,
+      alert.transaction.country,
+      alert.transaction.timestamp.toISOString(),
+      alert.reason.replace(/"/g, '""'), // Escape double quotes in CSV
+      alert.flagged_at.toISOString(),
+    ]);
+
+    // Build CSV string
+    const csvContent = [
+      headers.map((h) => `"${h}"`).join(","),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+
+    logger.info({
+      message: `Exported ${alerts.length} alerts as CSV successfully`,
+      requestId,
+    });
+
+    // Log the action
+    await logAudit(req, {
+      action: `Exported ${alerts.length} alerts as CSV`,
+    });
+
+    return csvContent;
+  } catch (error) {
+    logger.error({
+      message: "Error exporting alerts as CSV",
+      organizationId,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+};
