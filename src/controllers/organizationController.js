@@ -294,42 +294,91 @@ exports.addMember = async (req, organizationId) => {
         }
       );
 
-      if (existingInvitation && existingInvitation.status === "pending") {
-        logger.info({
-          message: "Invitation already exists for this email (idempotent)",
-          organizationId,
-          email,
-          requestId,
-        });
-        return createResponse(
-          true,
-          {
-            email: existingInvitation.email,
-            role: existingInvitation.role,
-            status: "invited",
-            invitedAt: existingInvitation.createdAt,
-            expiresAt: existingInvitation.expiresAt,
+      let invitation;
+
+      if (existingInvitation) {
+        // If invitation is pending, return idempotent response
+        if (existingInvitation.status === "pending") {
+          logger.info({
+            message: "Invitation already exists for this email (idempotent)",
+            organizationId,
+            email,
+            requestId,
+          });
+          return createResponse(
+            true,
+            {
+              email: existingInvitation.email,
+              role: existingInvitation.role,
+              status: "invited",
+              invitedAt: existingInvitation.createdAt,
+              expiresAt: existingInvitation.expiresAt,
+            },
+            "Invitation already sent"
+          );
+        }
+
+        // If invitation was canceled or expired, update it with new token
+        if (existingInvitation.status === "canceled" || existingInvitation.status === "expired") {
+          logger.info({
+            message: "Updating previously canceled/expired invitation",
+            organizationId,
+            email,
+            previousStatus: existingInvitation.status,
+            requestId,
+          });
+
+          const token = crypto.randomBytes(32).toString("hex");
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+          invitation = await prisma.organizationInvitation.update({
+            where: {
+              id: existingInvitation.id,
+            },
+            data: {
+              role,
+              token,
+              invitedBy: currentUser.id,
+              expiresAt,
+              status: "pending",
+            },
+          });
+        } else if (existingInvitation.status === "accepted") {
+          // This shouldn't happen as we check for membership earlier, but handle it gracefully
+          logger.warn({
+            message: "Invitation already accepted but membership check passed",
+            organizationId,
+            email,
+            requestId,
+          });
+          return createResponse(
+            true,
+            {
+              email: existingInvitation.email,
+              role: existingInvitation.role,
+              status: "accepted",
+            },
+            "User has already accepted this invitation"
+          );
+        }
+      } else {
+        // Generate invitation token
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        // Create invitation record
+        invitation = await prisma.organizationInvitation.create({
+          data: {
+            organizationId: orgId,
+            email: email.toLowerCase(),
+            role,
+            token,
+            invitedBy: currentUser.id,
+            expiresAt,
+            status: "pending",
           },
-          "Invitation already sent"
-        );
+        });
       }
-
-      // Generate invitation token
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-      // Create invitation record
-      const invitation = await prisma.organizationInvitation.create({
-        data: {
-          organizationId: orgId,
-          email: email.toLowerCase(),
-          role,
-          token,
-          invitedBy: currentUser.id,
-          expiresAt,
-          status: "pending",
-        },
-      });
 
       // Send invitation email
       try {
@@ -338,7 +387,7 @@ exports.addMember = async (req, organizationId) => {
           organizationName: organization.name,
           inviterName: currentUser.name || currentUser.email,
           role,
-          token,
+          token: invitation.token,
         });
 
         logger.info({
