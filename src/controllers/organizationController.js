@@ -318,10 +318,14 @@ exports.addMember = async (req, organizationId) => {
           );
         }
 
-        // If invitation was canceled or expired, update it with new token
-        if (existingInvitation.status === "canceled" || existingInvitation.status === "expired") {
+        // If invitation was canceled, expired, or accepted (user was removed), update it with new token
+        if (
+          existingInvitation.status === "canceled" || 
+          existingInvitation.status === "expired" || 
+          existingInvitation.status === "accepted"
+        ) {
           logger.info({
-            message: "Updating previously canceled/expired invitation",
+            message: "Re-inviting user with previously used invitation",
             organizationId,
             email,
             previousStatus: existingInvitation.status,
@@ -343,23 +347,6 @@ exports.addMember = async (req, organizationId) => {
               status: "pending",
             },
           });
-        } else if (existingInvitation.status === "accepted") {
-          // This shouldn't happen as we check for membership earlier, but handle it gracefully
-          logger.warn({
-            message: "Invitation already accepted but membership check passed",
-            organizationId,
-            email,
-            requestId,
-          });
-          return createResponse(
-            true,
-            {
-              email: existingInvitation.email,
-              role: existingInvitation.role,
-              status: "accepted",
-            },
-            "User has already accepted this invitation"
-          );
         }
       } else {
         // Generate invitation token
@@ -470,36 +457,122 @@ exports.getMembers = async (req, organizationId) => {
 };
 
 exports.removeMember = async (req, organizationId, userId) => {
-  const { requestId } = req;
+  const { requestId, user: currentUser } = req;
+  const orgId = parseInt(organizationId);
+  const targetUserId = parseInt(userId);
 
   logger.info({
     message: "Removing member from organization",
-    organizationId,
-    userId,
+    organizationId: orgId,
+    userId: targetUserId,
+    requestingUser: currentUser.id,
     requestId,
   });
 
-  await prisma.organizationMember.delete({
-    where: {
-      organizationId_userId: {
-        organizationId: parseInt(organizationId),
-        userId: parseInt(userId),
+  try {
+    // Use a transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Check if the target member exists and get their role
+      const targetMember = await tx.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: targetUserId,
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (!targetMember) {
+        const err = new Error("Member not found in this organization");
+        err.status = 404;
+        throw err;
+      }
+
+      // 2. If the target is an admin, check if they're the last admin
+      if (targetMember.role === "admin") {
+        const adminCount = await tx.organizationMember.count({
+          where: {
+            organizationId: orgId,
+            role: "admin",
+            status: "active",
+          },
+        });
+
+        logger.info({
+          message: "Admin count check",
+          organizationId: orgId,
+          currentAdminCount: adminCount,
+          targetUserId,
+          requestId,
+        });
+
+        // Cannot remove the last admin
+        if (adminCount <= 1) {
+          const err = new Error(
+            "Cannot remove the last admin from the organization. Please assign another admin before removing this user."
+          );
+          err.status = 409;
+          err.code = "LAST_ADMIN_REMOVAL";
+          throw err;
+        }
+      }
+
+      // 3. Delete the member
+      await tx.organizationMember.delete({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: targetUserId,
+          },
+        },
+      });
+
+      return targetMember;
+    });
+
+    logger.info({
+      message: "Member removed successfully",
+      organizationId: orgId,
+      userId: targetUserId,
+      removedUserEmail: result.user.email,
+      removedUserRole: result.role,
+      requestId,
+    });
+
+    // 4. Audit the deletion with detailed information
+    const isSelfRemoval = currentUser.id === targetUserId;
+    await logAudit(req, {
+      action: `Removed ${isSelfRemoval ? "themselves" : `member ${result.user.email}`} (role: ${result.role}) from organization`,
+    });
+
+    return createResponse(true, {
+      message: "Member removed successfully",
+      removedUser: {
+        id: result.user.id,
+        email: result.user.email,
+        role: result.role,
       },
-    },
-  });
-
-  logger.info({
-    message: "Member removed successfully",
-    organizationId,
-    userId,
-    requestId,
-  });
-
-  await logAudit(req, {
-    action: `Removed member with user ID ${userId}`,
-  });
-
-  return createResponse(true, { message: "Member removed successfully" });
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error removing member",
+      organizationId: orgId,
+      userId: targetUserId,
+      requestId,
+      error: error.message,
+      errorCode: error.code,
+    });
+    throw error;
+  }
 };
 
 exports.generateApiKey = async (req, organizationId) => {
