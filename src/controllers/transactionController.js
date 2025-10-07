@@ -149,13 +149,7 @@ async function createTransaction(req, transactionData) {
       await logAudit(req, {
         action: `Transaction Flagged: ${transaction.transaction_id}`,
       });
-    } else {
-      // Log created transaction
-      await logAudit(req, {
-        action: `Transaction Created: ${transaction.transaction_id}`,
-      });
-    }
-
+    } 
     return { createdTransaction, flagged, reasons, matchedRules };
   });
 

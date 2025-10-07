@@ -208,7 +208,6 @@ const getMe = async (req) => {
     throw err;
   }
 
-  const permissions = JSON.parse(user.permissions);
   const features = user.plan?.features ? JSON.parse(user.plan.features) : [];
 
   const formattedUser = {
@@ -227,8 +226,6 @@ const getMe = async (req) => {
       features: features,
     },
     role: user.role,
-    permissions: permissions,
-    lastLogin: user.lastLogin ?? null,
     accountCreated: user.createdAt,
     twoFactorEnabled: user.twoFactorEnabled ?? false,
   };
@@ -297,7 +294,6 @@ const updateMe = async (req) => {
     return user;
   });
 
-  const permissions = JSON.parse(updatedUser.permissions);
   const features = updatedUser.plan?.features
     ? JSON.parse(updatedUser.plan.features)
     : [];
@@ -318,8 +314,6 @@ const updateMe = async (req) => {
       features: features,
     },
     role: updatedUser.role,
-    permissions: permissions,
-    lastLogin: updatedUser.lastLogin ?? null,
     accountCreated: updatedUser.createdAt,
     twoFactorEnabled: updatedUser.twoFactorEnabled ?? false,
   };

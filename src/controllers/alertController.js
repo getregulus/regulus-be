@@ -52,19 +52,21 @@ exports.addAlert = async (req) => {
     requestId,
   });
 
-  // Check if the transaction exists
-  const transaction = await prisma.transaction.findUnique({
-    where: { transaction_id },
+  const transaction = await prisma.transaction.findFirst({
+    where: { 
+      transaction_id,
+      organizationId: organization.id,
+    },
   });
 
   if (!transaction) {
     logger.warn({
-      message: "Transaction not found",
+      message: "Transaction not found in this organization",
       transaction_id,
       organizationId: organization.id,
       requestId,
     });
-    throw new Error("Transaction not found. Cannot add alert.");
+    throw new Error("Transaction not found in this organization. Cannot add alert.");
   }
 
   const alert = await prisma.alert.create({

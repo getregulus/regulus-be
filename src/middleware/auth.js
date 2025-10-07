@@ -50,6 +50,8 @@ const authenticate = async (req, res, next) => {
 };
 
 // Middleware to authorize specific roles
+// Checks organization-specific role if organizationContext was used,
+// otherwise falls back to global user role for platform-level operations
 const authorize = (roles = []) => {
   return (req, res, next) => {
     try {
@@ -57,16 +59,34 @@ const authorize = (roles = []) => {
         throw new AuthenticationError("User not authenticated");
       }
 
-      if (roles.length && !roles.includes(req.user.role)) {
+      // Determine which role to check: organization-specific or global
+      const roleToCheck = req.organizationRole || req.user.role;
+      const roleType = req.organizationRole ? "organization" : "global";
+
+      if (roles.length && !roles.includes(roleToCheck)) {
         logger.error({
           message: "Authorization failed - insufficient permissions",
           requestId: req.requestId,
-          userRole: req.user.role,
+          roleType: roleType,
+          userRole: roleToCheck,
+          globalRole: req.user.role,
+          organizationRole: req.organizationRole,
+          organizationId: req.organization?.id,
           requiredRoles: roles,
           path: req.path,
         });
         throw new AuthenticationError("Insufficient permissions");
       }
+
+      logger.info({
+        message: "Authorization successful",
+        requestId: req.requestId,
+        roleType: roleType,
+        userRole: roleToCheck,
+        organizationId: req.organization?.id,
+        requiredRoles: roles,
+        path: req.path,
+      });
 
       next();
     } catch (error) {

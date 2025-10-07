@@ -488,22 +488,8 @@ exports.generateApiKey = async (req, organizationId) => {
     requestId,
   });
 
-  // Check user permissions
-  const membership = await prisma.organizationMember.findFirst({
-    where: { organizationId: parseInt(organizationId, 10), userId },
-  });
-
-  if (!membership || membership.role !== "admin") {
-    logger.warn({
-      message: "Permission denied",
-      organizationId,
-      userId,
-      requestId,
-    });
-    const err = new Error("Permission denied");
-    err.status = 403;
-    throw err;
-  }
+  // Authorization is handled by the authorize middleware based on organizationRole
+  // No need for redundant checks here
 
   // Check the number of existing API keys
   const existingKeys = await prisma.apiKey.count({

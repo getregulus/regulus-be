@@ -14,8 +14,6 @@ model User {
   password        String?
   googleId        String?          @unique
   role            String           @default("admin")
-  permissions     String           @default("[\"read\",\"write\"]")
-  lastLogin       DateTime?
   createdAt       DateTime         @default(now())
   twoFactorEnabled Boolean         @default(false)
   preferences     Preferences?
