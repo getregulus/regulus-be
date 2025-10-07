@@ -110,10 +110,11 @@ const sendInvitationEmail = async ({
               padding: 20px;
             }
             .header {
-              background-color: #4A90E2;
-              color: white;
+              background-color: #FFF;
+              color: #000;
               padding: 20px;
               text-align: center;
+              border-bottom: 1px solid #E6E6E6;
               border-radius: 5px 5px 0 0;
             }
             .content {
@@ -124,8 +125,8 @@ const sendInvitationEmail = async ({
             .button {
               display: inline-block;
               padding: 12px 30px;
-              background-color: #4A90E2;
-              color: white;
+              background-color: #63b3ed;
+              color: #000;
               text-decoration: none;
               border-radius: 5px;
               margin: 20px 0;
