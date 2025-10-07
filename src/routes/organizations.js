@@ -11,6 +11,7 @@ const {
   addMember,
   getMembers,
   removeMember,
+  updateMemberRole,
   generateApiKey,
   getApiKey,
   deleteApiKey,
@@ -515,6 +516,110 @@ router.delete(
   async (req, res, next) => {
     try {
       const result = await removeMember(req, req.params.id, req.params.userId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{id}/members/{userId}:
+ *   patch:
+ *     summary: Update a member's role in the organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [admin, auditor]
+ *                 example: admin
+ *     responses:
+ *       200:
+ *         description: Member role updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Member role updated successfully"
+ *                     member:
+ *                       type: object
+ *                       properties:
+ *                         userId:
+ *                           type: integer
+ *                         role:
+ *                           type: string
+ *                           enum: [admin, auditor]
+ *                         user:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             name:
+ *                               type: string
+ *                             email:
+ *                               type: string
+ *       400:
+ *         description: Invalid role value
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       403:
+ *         description: Forbidden - Not an admin of the organization
+ *       404:
+ *         description: Member not found in this organization
+ *       409:
+ *         description: Cannot demote the last admin
+ *       500:
+ *         description: Internal server error
+ */
+router.patch(
+  "/:id/members/:userId",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  validateSchema(
+    Joi.object({
+      id: Joi.number().integer().positive().required(),
+      userId: Joi.number().integer().positive().required(),
+    }),
+    { property: "params" }
+  ),
+  async (req, res, next) => {
+    try {
+      const result = await updateMemberRole(req, req.params.id, req.params.userId);
       res.status(200).json(result);
     } catch (error) {
       next(error);

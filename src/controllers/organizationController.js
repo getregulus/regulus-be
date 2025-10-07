@@ -1221,3 +1221,169 @@ exports.cancelInvitation = async (req, organizationId, invitationId) => {
     throw error;
   }
 };
+
+exports.updateMemberRole = async (req, organizationId, userId) => {
+  const { requestId, user: currentUser, body } = req;
+  const orgId = parseInt(organizationId);
+  const targetUserId = parseInt(userId);
+
+  // Validate role
+  const updateMemberRoleSchema = Joi.object({
+    role: Joi.string().valid("admin", "auditor").required(),
+  });
+
+  const { error } = updateMemberRoleSchema.validate(body);
+  if (error) {
+    logger.warn({
+      message: "Validation error while updating member role",
+      error: error.details[0].message,
+      requestId,
+    });
+    const err = new Error(error.details[0].message);
+    err.status = 400;
+    throw err;
+  }
+
+  const { role } = body;
+
+  logger.info({
+    message: "Updating member role",
+    organizationId: orgId,
+    userId: targetUserId,
+    newRole: role,
+    requestingUser: currentUser.id,
+    requestId,
+  });
+
+  try {
+    // Use a transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Check if the target member exists and get their current role
+      const targetMember = await tx.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: targetUserId,
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (!targetMember) {
+        const err = new Error("Member not found in this organization");
+        err.status = 404;
+        throw err;
+      }
+
+      // 2. If the member is already in the requested role, return idempotent response
+      if (targetMember.role === role) {
+        logger.info({
+          message: "Member already has the requested role (idempotent)",
+          organizationId: orgId,
+          userId: targetUserId,
+          role,
+          requestId,
+        });
+        return { member: targetMember, changed: false };
+      }
+
+      // 3. If demoting an admin, check if they're the last admin
+      if (targetMember.role === "admin" && role !== "admin") {
+        const adminCount = await tx.organizationMember.count({
+          where: {
+            organizationId: orgId,
+            role: "admin",
+            status: "active",
+          },
+        });
+
+        logger.info({
+          message: "Admin count check for demotion",
+          organizationId: orgId,
+          currentAdminCount: adminCount,
+          targetUserId,
+          requestId,
+        });
+
+        // Cannot demote the last admin
+        if (adminCount <= 1) {
+          const err = new Error(
+            "Cannot demote the last admin from the organization. Please assign another admin before changing this user's role."
+          );
+          err.status = 409;
+          err.code = "LAST_ADMIN_DEMOTION";
+          throw err;
+        }
+      }
+
+      // 4. Update the member's role
+      const updatedMember = await tx.organizationMember.update({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: targetUserId,
+          },
+        },
+        data: {
+          role,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return { member: updatedMember, changed: true, oldRole: targetMember.role };
+    });
+
+    if (result.changed) {
+      logger.info({
+        message: "Member role updated successfully",
+        organizationId: orgId,
+        userId: targetUserId,
+        oldRole: result.oldRole,
+        newRole: role,
+        userEmail: result.member.user.email,
+        requestId,
+      });
+
+      // 5. Audit the role change with detailed information
+      await logAudit(req, {
+        action: `Changed ${result.member.user.email}'s role from ${result.oldRole} to ${role}`,
+      });
+
+      return createResponse(true, {
+        message: "Member role updated successfully",
+        member: result.member,
+      });
+    } else {
+      return createResponse(true, {
+        message: "Member already has the requested role",
+        member: result.member,
+      });
+    }
+  } catch (error) {
+    logger.error({
+      message: "Error updating member role",
+      organizationId: orgId,
+      userId: targetUserId,
+      requestId,
+      error: error.message,
+      errorCode: error.code,
+    });
+    throw error;
+  }
+};
