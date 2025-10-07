@@ -1,9 +1,12 @@
 const prisma = require("@utils/prisma");
 const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
+const { logAudit } = require("@utils/auditLogger");
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+const { sendInvitationEmail } = require("@utils/emailService");
 
 const defaultRules = require("@utils/defaultRules");
 
@@ -13,9 +16,10 @@ const createOrgSchema = Joi.object({
 });
 
 const addMemberSchema = Joi.object({
-  userId: Joi.number().required(),
+  userId: Joi.number(),
+  email: Joi.string().email(),
   role: Joi.string().valid("admin", "auditor").required(),
-});
+}).xor("userId", "email");
 
 exports.createOrganization = async (req) => {
   const {
@@ -104,7 +108,7 @@ exports.getOrganizations = async (req) => {
 };
 
 exports.addMember = async (req, organizationId) => {
-  const { body, requestId } = req;
+  const { body, requestId, user: currentUser } = req;
 
   // Validate the request body against the addMemberSchema
   const { error } = addMemberSchema.validate(body);
@@ -114,73 +118,269 @@ exports.addMember = async (req, organizationId) => {
       error: error.details[0].message,
       requestId,
     });
-    throw new Error(error.details[0].message);
+    const err = new Error(error.details[0].message);
+    err.status = 400;
+    throw err;
   }
 
-  const { userId, role } = body;
+  const { userId, email, role } = body;
+  const orgId = parseInt(organizationId);
 
   try {
-    logger.info({
-      message: "Adding member to organization",
-      organizationId,
-      userId,
-      role,
-      requestId,
+    // Get organization details for email
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { name: true },
     });
 
-    // Check if member already exists
-    const existingMember = await prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId: parseInt(organizationId),
-          userId: parseInt(userId),
-        },
-      },
-    });
-
-    if (existingMember) {
-      logger.warn({
-        message: "Member already exists in organization",
-        organizationId,
-        userId,
-        requestId,
-      });
-      const err = new Error("User is already a member of this organization");
-      err.status = 409;
+    if (!organization) {
+      const err = new Error("Organization not found");
+      err.status = 404;
       throw err;
     }
 
-    const member = await prisma.organizationMember.create({
-      data: {
-        userId: parseInt(userId),
-        organizationId: parseInt(organizationId),
+    // Case 1: Adding by userId
+    if (userId) {
+      logger.info({
+        message: "Adding member to organization by userId",
+        organizationId,
+        userId,
         role,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+        requestId,
+      });
+
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: parseInt(userId) },
+      });
+
+      if (!user) {
+        const err = new Error("User not found");
+        err.status = 404;
+        throw err;
+      }
+
+      // Check if member already exists (idempotent response)
+      const existingMember = await prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: orgId,
+            userId: parseInt(userId),
           },
         },
-      },
-    });
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
 
-    logger.info({
-      message: "Member added successfully",
-      organizationId,
-      userId,
-      role,
-      requestId,
-    });
+      if (existingMember) {
+        logger.info({
+          message: "Member already exists in organization (idempotent)",
+          organizationId,
+          userId,
+          requestId,
+        });
+        return createResponse(true, existingMember, "User is already a member");
+      }
 
-    return createResponse(true, member);
+      // Create membership
+      const member = await prisma.organizationMember.create({
+        data: {
+          userId: parseInt(userId),
+          organizationId: orgId,
+          role,
+          status: "active",
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      logger.info({
+        message: "Member added successfully",
+        organizationId,
+        userId,
+        role,
+        requestId,
+      });
+
+      await logAudit(req, {
+        action: `Added member ${member.user.email} with role ${role}`,
+      });
+
+      return createResponse(true, member);
+    }
+
+    // Case 2: Adding by email
+    if (email) {
+      logger.info({
+        message: "Adding member to organization by email",
+        organizationId,
+        email,
+        role,
+        requestId,
+      });
+
+      // Check if user is already a member (idempotent)
+      const existingUser = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+      });
+
+      if (existingUser) {
+        const existingMember = await prisma.organizationMember.findUnique({
+          where: {
+            organizationId_userId: {
+              organizationId: orgId,
+              userId: existingUser.id,
+            },
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        });
+
+        if (existingMember) {
+          logger.info({
+            message: "Member already exists in organization (idempotent)",
+            organizationId,
+            email,
+            requestId,
+          });
+          return createResponse(
+            true,
+            existingMember,
+            "User is already a member"
+          );
+        }
+      }
+
+      // Create invitation (whether user exists or not)
+      logger.info({
+        message: "Creating invitation",
+        organizationId,
+        email,
+        userExists: !!existingUser,
+        role,
+        requestId,
+      });
+
+      // Check if invitation already exists
+      const existingInvitation = await prisma.organizationInvitation.findUnique(
+        {
+          where: {
+            organizationId_email: {
+              organizationId: orgId,
+              email: email.toLowerCase(),
+            },
+          },
+        }
+      );
+
+      if (existingInvitation && existingInvitation.status === "pending") {
+        logger.info({
+          message: "Invitation already exists for this email (idempotent)",
+          organizationId,
+          email,
+          requestId,
+        });
+        return createResponse(
+          true,
+          {
+            email: existingInvitation.email,
+            role: existingInvitation.role,
+            status: "invited",
+            invitedAt: existingInvitation.createdAt,
+            expiresAt: existingInvitation.expiresAt,
+          },
+          "Invitation already sent"
+        );
+      }
+
+      // Generate invitation token
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+      // Create invitation record
+      const invitation = await prisma.organizationInvitation.create({
+        data: {
+          organizationId: orgId,
+          email: email.toLowerCase(),
+          role,
+          token,
+          invitedBy: currentUser.id,
+          expiresAt,
+          status: "pending",
+        },
+      });
+
+      // Send invitation email
+      try {
+        await sendInvitationEmail({
+          to: email,
+          organizationName: organization.name,
+          inviterName: currentUser.name || currentUser.email,
+          role,
+          token,
+        });
+
+        logger.info({
+          message: "Invitation created and email sent",
+          organizationId,
+          email,
+          role,
+          requestId,
+        });
+      } catch (emailError) {
+        logger.error({
+          message: "Failed to send invitation email",
+          organizationId,
+          email,
+          error: emailError.message,
+          requestId,
+        });
+        // Don't fail the request if email fails - invitation is still created
+      }
+
+      await logAudit(req, {
+        action: `Sent invitation to ${email} with role ${role}`,
+      });
+
+      return createResponse(
+        true,
+        {
+          email: invitation.email,
+          role: invitation.role,
+          status: "invited",
+          invitedAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+        "Invitation sent successfully"
+      );
+    }
   } catch (error) {
     logger.error({
       message: "Error adding member",
       organizationId,
       userId,
+      email,
       role,
       requestId,
       error,
@@ -244,6 +444,10 @@ exports.removeMember = async (req, organizationId, userId) => {
     organizationId,
     userId,
     requestId,
+  });
+
+  await logAudit(req, {
+    action: `Removed member with user ID ${userId}`,
   });
 
   return createResponse(true, { message: "Member removed successfully" });
@@ -444,9 +648,30 @@ exports.getOrganizationDetails = async (req, organizationId) => {
           select: {
             userId: true,
             role: true,
+            status: true,
+            joinedAt: true,
             user: {
               select: {
                 id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        invitations: {
+          where: {
+            status: "pending",
+          },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            createdAt: true,
+            expiresAt: true,
+            inviter: {
+              select: {
                 name: true,
                 email: true,
               },
@@ -544,6 +769,346 @@ exports.deleteOrganization = async (req, organizationId) => {
       organizationId,
       requestId,
       error,
+    });
+    throw error;
+  }
+};
+
+exports.acceptInvitation = async (req) => {
+  const { token } = req.body;
+  const { requestId, user } = req;
+
+  if (!token) {
+    const err = new Error("Invitation token is required");
+    err.status = 400;
+    throw err;
+  }
+
+  logger.info({
+    message: "Accepting organization invitation",
+    token,
+    userId: user?.id,
+    requestId,
+  });
+
+  try {
+    // Find the invitation
+    const invitation = await prisma.organizationInvitation.findUnique({
+      where: { token },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!invitation) {
+      const err = new Error("Invalid invitation token");
+      err.status = 404;
+      throw err;
+    }
+
+    // Check if invitation was canceled
+    if (invitation.status === "canceled") {
+      const err = new Error(
+        "This invitation has been canceled by an administrator"
+      );
+      err.status = 410; // Gone
+      throw err;
+    }
+
+    // Check if invitation has expired
+    if (new Date() > invitation.expiresAt) {
+      await prisma.organizationInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "expired" },
+      });
+
+      const err = new Error("Invitation has expired");
+      err.status = 410; // Gone
+      throw err;
+    }
+
+    // Check if invitation is already accepted
+    if (invitation.status === "accepted") {
+      const err = new Error("Invitation has already been accepted");
+      err.status = 409;
+      throw err;
+    }
+
+    // If user is authenticated, use their account
+    let userId = user?.id;
+
+    // If not authenticated or different email, handle accordingly
+    if (!userId) {
+      // User needs to be authenticated to accept invitation
+      const err = new Error("Authentication required to accept invitation");
+      err.status = 401;
+      throw err;
+    }
+
+    // Get user's email to verify it matches the invitation
+    const userAccount = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    if (userAccount.email.toLowerCase() !== invitation.email.toLowerCase()) {
+      const err = new Error(
+        "This invitation was sent to a different email address"
+      );
+      err.status = 403;
+      throw err;
+    }
+
+    // Check if user is already a member
+    const existingMember = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: invitation.organizationId,
+          userId: userId,
+        },
+      },
+    });
+
+    if (existingMember) {
+      // Update invitation status and return success (idempotent)
+      await prisma.organizationInvitation.update({
+        where: { id: invitation.id },
+        data: { status: "accepted" },
+      });
+
+      logger.info({
+        message: "User already a member (idempotent acceptance)",
+        organizationId: invitation.organizationId,
+        userId,
+        requestId,
+      });
+
+      return createResponse(
+        true,
+        {
+          organization: invitation.organization,
+          member: existingMember,
+        },
+        "Already a member of this organization"
+      );
+    }
+
+    // Log what we're about to create
+    logger.info({
+      message: "Creating membership from invitation",
+      organizationId: invitation.organizationId,
+      userId,
+      invitationRole: invitation.role,
+      invitationEmail: invitation.email,
+      requestId,
+    });
+
+    // Create the membership
+    const member = await prisma.organizationMember.create({
+      data: {
+        userId: userId,
+        organizationId: invitation.organizationId,
+        role: invitation.role,
+        status: "active",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    // Log what was actually created
+    logger.info({
+      message: "Membership created",
+      organizationId: invitation.organizationId,
+      userId,
+      createdRole: member.role,
+      expectedRole: invitation.role,
+      requestId,
+    });
+
+    // Update invitation status
+    await prisma.organizationInvitation.update({
+      where: { id: invitation.id },
+      data: { status: "accepted" },
+    });
+
+    logger.info({
+      message: "Invitation accepted successfully",
+      organizationId: invitation.organizationId,
+      userId,
+      role: invitation.role,
+      memberRole: member.role,
+      requestId,
+    });
+
+    // Log audit (manual creation since req.organization is not available)
+    try {
+      await prisma.auditLog.create({
+        data: {
+          organizationId: invitation.organizationId,
+          userId: userId,
+          action: `Accepted invitation and joined as ${invitation.role}`,
+          createdAt: new Date(),
+        },
+      });
+    } catch (auditError) {
+      logger.error({
+        message: "Failed to create audit log for invitation acceptance",
+        error: auditError.message,
+        organizationId: invitation.organizationId,
+        userId,
+      });
+    }
+
+    return createResponse(true, {
+      organization: invitation.organization,
+      member,
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error accepting invitation",
+      token,
+      userId: user?.id,
+      requestId,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+exports.getInvitationDetails = async (req) => {
+  const { token } = req.query;
+  const { requestId } = req;
+
+  if (!token) {
+    const err = new Error("Invitation token is required");
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    const invitation = await prisma.organizationInvitation.findUnique({
+      where: { token },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        inviter: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!invitation) {
+      const err = new Error("Invalid invitation token");
+      err.status = 404;
+      throw err;
+    }
+
+    // Check if expired
+    const isExpired = new Date() > invitation.expiresAt;
+    const isCanceled = invitation.status === "canceled";
+
+    logger.info({
+      message: "Invitation details retrieved",
+      token,
+      organizationId: invitation.organizationId,
+      status: invitation.status,
+      isExpired,
+      isCanceled,
+      requestId,
+    });
+
+    return createResponse(true, {
+      email: invitation.email,
+      role: invitation.role,
+      organization: invitation.organization,
+      inviter: invitation.inviter,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+      isExpired,
+      isCanceled,
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error getting invitation details",
+      token,
+      requestId,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+exports.cancelInvitation = async (req, organizationId, invitationId) => {
+  const { requestId } = req;
+
+  logger.info({
+    message: "Canceling organization invitation",
+    organizationId,
+    invitationId,
+    requestId,
+  });
+
+  try {
+    // Verify the invitation exists and belongs to this organization
+    const invitation = await prisma.organizationInvitation.findFirst({
+      where: {
+        id: parseInt(invitationId),
+        organizationId: parseInt(organizationId),
+      },
+    });
+
+    if (!invitation) {
+      const err = new Error("Invitation not found");
+      err.status = 404;
+      throw err;
+    }
+
+    // Update the invitation status to canceled instead of deleting
+    await prisma.organizationInvitation.update({
+      where: { id: parseInt(invitationId) },
+      data: { status: "canceled" },
+    });
+
+    logger.info({
+      message: "Invitation canceled successfully",
+      organizationId,
+      invitationId,
+      requestId,
+    });
+
+    await logAudit(req, {
+      action: `Canceled invitation for ${invitation.email}`,
+    });
+
+    return createResponse(true, {
+      message: "Invitation canceled successfully",
+    });
+  } catch (error) {
+    logger.error({
+      message: "Error canceling invitation",
+      organizationId,
+      invitationId,
+      requestId,
+      error: error.message,
     });
     throw error;
   }

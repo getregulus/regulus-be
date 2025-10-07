@@ -17,6 +17,9 @@ const {
   getOrganizationDetails,
   updateOrganizationDetails,
   deleteOrganization,
+  acceptInvitation,
+  getInvitationDetails,
+  cancelInvitation,
 } = require("@controllers/organizationController");
 
 const createOrgSchema = Joi.object({
@@ -24,9 +27,10 @@ const createOrgSchema = Joi.object({
 });
 
 const addMemberSchema = Joi.object({
-  userId: Joi.number().integer().positive().required(),
+  userId: Joi.number().integer().positive(),
+  email: Joi.string().email(),
   role: Joi.string().valid("admin", "auditor").required(),
-});
+}).xor("userId", "email");
 
 /**
  * @swagger
@@ -207,6 +211,150 @@ router.get("/", apiLimiter, authenticate, async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /organizations/invitations/details:
+ *   get:
+ *     summary: Get invitation details by token
+ *     tags: [Organizations]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Invitation token
+ *     responses:
+ *       200:
+ *         description: Invitation details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     organization:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                     inviter:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                     status:
+ *                       type: string
+ *                     expiresAt:
+ *                       type: string
+ *                       format: date-time
+ *                     isExpired:
+ *                       type: boolean
+ *       400:
+ *         description: Token is required
+ *       404:
+ *         description: Invalid invitation token
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/invitations/details",
+  apiLimiter,
+  async (req, res, next) => {
+    try {
+      const result = await getInvitationDetails(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/invitations/accept:
+ *   post:
+ *     summary: Accept an organization invitation
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Invitation token
+ *     responses:
+ *       200:
+ *         description: Invitation accepted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     organization:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                     member:
+ *                       type: object
+ *       400:
+ *         description: Token is required
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Email mismatch
+ *       404:
+ *         description: Invalid invitation token
+ *       409:
+ *         description: Invitation already accepted
+ *       410:
+ *         description: Invitation expired
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  "/invitations/accept",
+  apiLimiter,
+  authenticate,
+  async (req, res, next) => {
+    try {
+      const result = await acceptInvitation(req);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * @swagger
@@ -824,6 +972,73 @@ router.delete(
   async (req, res, next) => {
     try {
       const result = await deleteOrganization(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/{id}/invitations/{invitationId}:
+ *   delete:
+ *     summary: Cancel an organization invitation
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *       - in: path
+ *         name: invitationId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Invitation ID
+ *     responses:
+ *       200:
+ *         description: Invitation canceled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Invitation canceled successfully"
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Not an admin
+ *       404:
+ *         description: Invitation not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete(
+  "/:id/invitations/:invitationId",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await cancelInvitation(
+        req,
+        req.params.id,
+        req.params.invitationId
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);
