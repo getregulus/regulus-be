@@ -14,8 +14,6 @@ model User {
   password        String?
   googleId        String?          @unique
   role            String           @default("admin")
-  permissions     String           @default("[\"read\",\"write\"]")
-  lastLogin       DateTime?
   createdAt       DateTime         @default(now())
   twoFactorEnabled Boolean         @default(false)
   preferences     Preferences?
@@ -23,6 +21,7 @@ model User {
   auditLogs       AuditLog[]
   organizations   OrganizationMember[]
   apiKeys         ApiKey[]         @relation("UserApiKeys")
+  sentInvitations OrganizationInvitation[]
 
   @@map("users")
 }
@@ -150,6 +149,7 @@ model Organization {
   name            String
   createdAt       DateTime         @default(now())
   members         OrganizationMember[]
+  invitations     OrganizationInvitation[]
   rules           Rule[]
   alerts          Alert[]
   transactions    Transaction[]
@@ -227,4 +227,23 @@ model Subscription {
   @@index([channelId])
   @@index([ruleId])
   @@map("subscriptions")
+}
+
+model OrganizationInvitation {
+  id              Int              @id @default(autoincrement())
+  organizationId  Int
+  email           String
+  role            String           @default("auditor")
+  token           String           @unique
+  invitedBy       Int
+  status          String           @default("pending") // pending, accepted, expired, canceled
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter         User             @relation(fields: [invitedBy], references: [id])
+
+  @@unique([organizationId, email])
+  @@index([token])
+  @@index([email])
+  @@map("organization_invitations")
 }

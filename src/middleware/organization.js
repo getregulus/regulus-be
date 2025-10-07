@@ -8,14 +8,15 @@ async function organizationContext(req, res, next) {
       req.headers["x-organization-id"] || req.params.id
     );
     
-    if (!organizationId) {
+    if (!organizationId || isNaN(organizationId)) {
       logger.warn({
-        message: "Missing organization ID",
+        message: "Missing or invalid organization ID",
         requestId: req.requestId,
         userId: req.user?.id,
         path: req.path,
+        rawOrgId: req.headers["x-organization-id"] || req.params.id,
       });
-      throw new Error("Organization ID is required.");
+      throw new AuthorizationError("Valid organization ID is required");
     }
 
     logger.info({
@@ -29,7 +30,10 @@ async function organizationContext(req, res, next) {
       where: { id: organizationId },
       include: {
         members: {
-          where: { userId: req.user?.id },
+          where: { 
+            userId: req.user?.id,
+            status: "active" 
+          },
         },
       },
     });
@@ -44,26 +48,42 @@ async function organizationContext(req, res, next) {
       throw new AuthorizationError("Organization not found");
     }
 
+    if (organization.status !== "active") {
+      logger.warn({
+        message: "Organization is not active",
+        organizationId,
+        organizationStatus: organization.status,
+        userId: req.user?.id,
+        requestId: req.requestId,
+      });
+      throw new AuthorizationError("Organization is not active");
+    }
+
     if (!organization.members.length) {
       logger.warn({
-        message: "User not a member of organization",
+        message: "User not an active member of organization",
         organizationId,
         userId: req.user?.id,
         requestId: req.requestId,
       });
-      throw new AuthorizationError("Not a member of this organization");
+      throw new AuthorizationError("Not an active member of this organization");
     }
 
+    const member = organization.members[0];
+    
     logger.info({
       message: "Organization access granted",
       organizationId,
+      organizationName: organization.name,
       userId: req.user?.id,
-      userRole: organization.members[0].role,
+      memberRole: member.role,
+      memberStatus: member.status,
       requestId: req.requestId,
     });
 
     req.organization = organization;
-    req.organizationRole = organization.members[0].role;
+    req.organizationRole = member.role;
+    req.organizationMember = member; 
     next();
   } catch (error) {
     next(error);
