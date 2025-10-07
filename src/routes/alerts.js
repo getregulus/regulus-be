@@ -5,7 +5,7 @@ const { organizationContext } = require("@middleware/organization");
 const { apiLimiter } = require("@middleware/rateLimiter");
 const { validateSchema } = require("@middleware/validation");
 const Joi = require("joi");
-const { getAlerts, deleteAlert, addAlert } = require("@controllers/alertController");
+const { getAlerts, deleteAlert, addAlert, exportAlertsCSV } = require("@controllers/alertController");
 
 /**
  * @swagger
@@ -156,6 +156,58 @@ router.post(
     try {
       const result = await addAlert(req);
       res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /alerts/export:
+ *   get:
+ *     summary: Export alerts as CSV
+ *     tags: [Alerts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: CSV file with all alerts
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               example: |
+ *                 "Alert ID","Transaction ID","User ID","Amount","Currency","Country","Transaction Timestamp","Alert Reason","Flagged At"
+ *                 "1","txn_123","user_456","15000.00","USD","US","2025-01-15T10:30:00.000Z","High value transaction","2025-01-15T10:30:05.000Z"
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get(
+  "/export",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin", "auditor"]),
+  async (req, res, next) => {
+    try {
+      const csvContent = await exportAlertsCSV(req);
+      
+      // Set headers for CSV download
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="alerts-export-${Date.now()}.csv"`);
+      
+      res.status(200).send(csvContent);
     } catch (error) {
       next(error);
     }
