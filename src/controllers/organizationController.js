@@ -985,6 +985,46 @@ exports.deleteOrganization = async (req, organizationId) => {
   });
 
   try {
+    // Check if organization has an active subscription
+    const organization = await prisma.organization.findUnique({
+      where: { id: parseInt(organizationId) },
+      include: {
+        billingSubscription: true,
+      },
+    });
+
+    if (!organization) {
+      const err = new Error("Organization not found");
+      err.status = 404;
+      throw err;
+    }
+
+    const { billingSubscription } = organization;
+
+    if (billingSubscription) {
+      const { status, cancelAtPeriodEnd } = billingSubscription;
+      
+      // Only block deletion for active paid subscriptions
+      const isActivePaid = status === 'active' && !cancelAtPeriodEnd;
+      
+      if (isActivePaid) {
+        logger.warn({
+          message: "Cannot delete organization with active paid subscription",
+          organizationId,
+          subscriptionStatus: status,
+          cancelAtPeriodEnd,
+          requestId,
+        });
+        
+        const err = new Error(
+          "Cannot delete organization with an active paid subscription. Please cancel your subscription first through the billing portal."
+        );
+        err.status = 409; // Conflict
+        err.code = "ACTIVE_SUBSCRIPTION";
+        throw err;
+      }
+    }
+
     await prisma.organization.delete({
       where: { id: parseInt(organizationId) },
     });
@@ -1003,7 +1043,7 @@ exports.deleteOrganization = async (req, organizationId) => {
       message: "Error deleting organization",
       organizationId,
       requestId,
-      error,
+      error: error.message,
     });
     throw error;
   }
