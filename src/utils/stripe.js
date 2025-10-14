@@ -71,6 +71,14 @@ async function createCheckoutSession({
   metadata = {},
 }) {
   try {
+    // Build subscription_data conditionally
+    const subscriptionData = { metadata };
+    
+    // Only include trial_period_days if it's a valid value (> 0)
+    if (trialPeriodDays && trialPeriodDays > 0) {
+      subscriptionData.trial_period_days = trialPeriodDays;
+    }
+    
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ["card"],
@@ -83,10 +91,7 @@ async function createCheckoutSession({
       mode: "subscription",
       success_url: successUrl,
       cancel_url: cancelUrl,
-      subscription_data: {
-        trial_period_days: trialPeriodDays,
-        metadata,
-      },
+      subscription_data: subscriptionData, 
       metadata,
     });
 
