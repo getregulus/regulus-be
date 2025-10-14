@@ -5,6 +5,7 @@ const swaggerSpec = require('./swagger');
 const errorHandler = require("@middleware/errorHandler");
 const requestLogger = require("@middleware/requestLogger");
 const requestId = require("@middleware/requestId");
+const webhookController = require("@controllers/webhookController");
 
 // Import routes
 const authRoutes = require("@routes/auth");
@@ -15,8 +16,18 @@ const alertRoutes = require("@routes/alerts");
 const watchlistRoutes = require("@routes/watchlist");
 const auditRoutes = require("@routes/audit");
 const channelRoutes = require("@routes/channels");
+const subscriptionRoutes = require("@routes/subscriptions");
 
 const app = express();
+
+// Stripe webhook route - MUST be before express.json() to get raw body
+app.post(
+  "/webhooks/stripe",
+  requestId,
+  express.raw({ type: "application/json" }),
+  webhookController.handleStripeWebhook
+);
+
 // Middleware
 app.use(express.json());
 app.use(cors());
@@ -47,6 +58,7 @@ app.use("/alerts", alertRoutes);
 app.use("/watchlist", watchlistRoutes);
 app.use("/audit", auditRoutes);
 app.use("/channels", channelRoutes);
+app.use("/subscriptions", subscriptionRoutes);
 
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

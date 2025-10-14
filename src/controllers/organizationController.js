@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { sendInvitationEmail } = require("@utils/emailService");
+const { createCustomer, PRICE_IDS } = require("@utils/stripe");
 
 const defaultRules = require("@utils/defaultRules");
 
@@ -42,33 +43,92 @@ exports.createOrganization = async (req) => {
     requestId,
   });
 
-  const organization = await prisma.organization.create({
-    data: {
-      name: body.name,
-      members: {
-        create: {
-          userId: id,
-          role: "admin",
+  // Get user details for Stripe customer creation
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { email: true, name: true },
+  });
+
+  try {
+    // Create Stripe customer
+    const stripeCustomer = await createCustomer({
+      email: user.email,
+      name: `${body.name} (${user.name})`,
+      metadata: {
+        userId: id.toString(),
+        organizationName: body.name,
+      },
+    });
+
+    logger.info({
+      message: "Stripe customer created",
+      customerId: stripeCustomer.id,
+      requestId,
+    });
+
+    // Get default price ID
+    const defaultPriceId = PRICE_IDS.startup || process.env.STRIPE_STARTUP_PRICE_ID;
+    
+    if (!defaultPriceId) {
+      throw new Error("Stripe price ID not configured");
+    }
+
+    // Calculate trial end date (7 days from now)
+    const trialStart = new Date();
+    const trialEnd = new Date(trialStart);
+    trialEnd.setDate(trialEnd.getDate() + 7);
+
+    // Create organization with billing subscription
+    const organization = await prisma.organization.create({
+      data: {
+        name: body.name,
+        members: {
+          create: {
+            userId: id,
+            role: "admin",
+          },
+        },
+        billingSubscription: {
+          create: {
+            stripeCustomerId: stripeCustomer.id,
+            stripePriceId: defaultPriceId,
+            plan: "startup",
+            status: "trialing",
+            trialStart,
+            trialEnd,
+          },
         },
       },
-    },
-  });
+      include: {
+        billingSubscription: true,
+      },
+    });
 
-  logger.info({
-    message: "Organization created successfully",
-    organizationId: organization.id,
-    requestId,
-  });
-
-  // Insert default rules
-  await prisma.rule.createMany({
-    data: defaultRules.map((rule) => ({
-      ...rule,
+    logger.info({
+      message: "Organization created successfully with billing subscription",
       organizationId: organization.id,
-    })),
-  });
+      stripeCustomerId: stripeCustomer.id,
+      requestId,
+    });
 
-  return createResponse(true, organization);
+    // Insert default rules
+    await prisma.rule.createMany({
+      data: defaultRules.map((rule) => ({
+        ...rule,
+        organizationId: organization.id,
+      })),
+    });
+
+    return createResponse(true, organization);
+  } catch (error) {
+    logger.error({
+      message: "Error creating organization with billing",
+      userId: id,
+      error: error.message,
+      requestId,
+    });
+    throw error;
+  }
 };
 
 exports.getOrganizations = async (req) => {
