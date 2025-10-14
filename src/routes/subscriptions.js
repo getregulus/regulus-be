@@ -123,5 +123,46 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /subscriptions/finalize-checkout:
+ *   post:
+ *     summary: Finalize checkout session - sync Stripe data to database
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *                 description: Stripe checkout session ID
+ *     responses:
+ *       200:
+ *         description: Checkout finalized successfully
+ *       400:
+ *         description: Bad request
+ *       404:
+ *         description: Subscription not found
+ */
+router.post(
+  "/finalize-checkout",
+  authenticate,
+  async (req, res, next) => {
+    try {
+      const result = await subscriptionController.finalizeCheckout(req);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 module.exports = router;
 
