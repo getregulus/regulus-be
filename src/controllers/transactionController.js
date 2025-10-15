@@ -16,18 +16,32 @@ const transactionSchema = Joi.object({
   timestamp: Joi.date().required(),
 });
 
-// Fetch all transactions
+// Fetch all transactions with pagination
 async function getTransactions(req) {
   const { organization, requestId } = req;
   const organizationId = organization.id;
+  
+  // Parse and validate pagination parameters with defaults and max limit
+  const MAX_LIMIT = 100;
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 25, 1), MAX_LIMIT);
+  const offset = (page - 1) * limit;
 
   try {
     logger.info({
       message: "Fetching transactions",
       organizationId,
+      page,
+      limit,
       requestId,
     });
 
+    // Get total count for pagination metadata
+    const total = await prisma.transaction.count({
+      where: { organizationId },
+    });
+
+    // Fetch paginated transactions
     const transactions = await prisma.transaction.findMany({
       where: { organizationId },
       select: {
@@ -40,15 +54,29 @@ async function getTransactions(req) {
         user_id: true,
         country: true,
       },
+      orderBy: {
+        timestamp: 'desc',
+      },
+      skip: offset,
+      take: limit,
     });
 
+    const totalPages = Math.ceil(total / limit);
+
     logger.info({
-      message: `Fetched ${transactions.length} transactions`,
+      message: `Fetched ${transactions.length} transactions (page ${page}/${totalPages})`,
       organizationId,
       requestId,
     });
 
-    return createResponse(true, transactions);
+    return {
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages,
+      data: transactions,
+    };
   } catch (error) {
     logger.error({
       message: "Error fetching transactions",
