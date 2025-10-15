@@ -56,7 +56,7 @@ const updateRuleSchema = Joi.object({
  * @swagger
  * /rules:
  *   get:
- *     summary: Get all rules for an organization
+ *     summary: Get all rules for an organization with pagination
  *     tags: [Rules]
  *     security:
  *       - bearerAuth: []
@@ -66,9 +66,24 @@ const updateRuleSchema = Joi.object({
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 25
+ *         description: Number of items per page (max 100)
  *     responses:
  *       200:
- *         description: Rules retrieved successfully
+ *         description: Paginated list of rules
  *         content:
  *           application/json:
  *             schema:
@@ -77,6 +92,14 @@ const updateRuleSchema = Joi.object({
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
  *                 data:
  *                   type: array
  *                   items:
