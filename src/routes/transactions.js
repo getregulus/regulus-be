@@ -33,7 +33,7 @@ const hybridAuth = (req, res, next) => {
  * @swagger
  * /transactions:
  *   get:
- *     summary: Get all transactions
+ *     summary: Get all transactions with pagination
  *     tags: [Transactions]
  *     security:
  *       - bearerAuth: []
@@ -44,9 +44,43 @@ const hybridAuth = (req, res, next) => {
  *         required: true
  *         schema:
  *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 25
+ *         description: Number of items per page (max 100)
  *     responses:
  *       200:
- *         description: List of transactions
+ *         description: Paginated list of transactions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Transaction'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:

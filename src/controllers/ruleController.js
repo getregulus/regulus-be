@@ -59,17 +59,31 @@ const createRule = async (req) => {
   return createResponse(true, rule);
 };
 
-// Get all rules for an organization
+// Get all rules for an organization with pagination
 async function getRules(req) {
   const { organization, requestId } = req;
+
+  // Parse and validate pagination parameters with defaults and max limit
+  const MAX_LIMIT = 100;
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 25, 1), MAX_LIMIT);
+  const offset = (page - 1) * limit;
 
   try {
     logger.info({
       message: "Fetching rules",
       organizationId: organization.id,
+      page,
+      limit,
       requestId,
     });
 
+    // Get total count for pagination metadata
+    const total = await prisma.rule.count({
+      where: { organizationId: organization.id },
+    });
+
+    // Fetch paginated rules
     const rules = await prisma.rule.findMany({
       where: { organizationId: organization.id },
       include: {
@@ -90,15 +104,26 @@ async function getRules(req) {
         },
       },
       orderBy: { createdAt: "desc" },
+      skip: offset,
+      take: limit,
     });
 
+    const totalPages = Math.ceil(total / limit);
+
     logger.info({
-      message: `Fetched ${rules.length} rules`,
+      message: `Fetched ${rules.length} rules (page ${page}/${totalPages})`,
       organizationId: organization.id,
       requestId,
     });
 
-    return createResponse(true, rules);
+    return {
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages,
+      data: rules,
+    };
   } catch (error) {
     logger.error({
       message: "Error fetching rules",

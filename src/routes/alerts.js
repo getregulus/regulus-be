@@ -11,7 +11,7 @@ const { getAlerts, deleteAlert, addAlert, exportAlertsCSV } = require("@controll
  * @swagger
  * /alerts:
  *   get:
- *     summary: Get all alerts
+ *     summary: Get all alerts with pagination
  *     tags: [Alerts]
  *     security:
  *       - bearerAuth: []
@@ -21,9 +21,24 @@ const { getAlerts, deleteAlert, addAlert, exportAlertsCSV } = require("@controll
  *         required: true
  *         schema:
  *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 25
+ *         description: Number of items per page (max 100)
  *     responses:
  *       200:
- *         description: List of alerts
+ *         description: Paginated list of alerts
  *         content:
  *           application/json:
  *             schema:
@@ -31,6 +46,14 @@ const { getAlerts, deleteAlert, addAlert, exportAlertsCSV } = require("@controll
  *               properties:
  *                 success:
  *                   type: boolean
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
  *                 data:
  *                   type: array
  *                   items:

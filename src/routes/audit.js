@@ -9,7 +9,7 @@ const { getAuditLogs } = require("@controllers/auditController");
  * @swagger
  * /audit:
  *   get:
- *     summary: Get organization audit logs
+ *     summary: Get organization audit logs with pagination
  *     tags: [Audit]
  *     security:
  *       - bearerAuth: []
@@ -20,9 +20,43 @@ const { getAuditLogs } = require("@controllers/auditController");
  *         schema:
  *           type: integer
  *         description: Organization ID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 25
+ *         description: Number of items per page (max 100)
  *     responses:
  *       200:
- *         description: List of audit logs
+ *         description: Paginated list of audit logs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/AuditLog'
  *       401:
  *         description: Unauthorized - Invalid or missing token
  *       403:

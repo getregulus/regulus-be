@@ -3,32 +3,57 @@ const logger = require("@utils/logger");
 const { createResponse } = require("@utils/responseHandler");
 const { logAudit } = require("@utils/auditLogger");
 
-// Fetch all alerts for an organization
+// Fetch all alerts for an organization with pagination
 exports.getAlerts = async function (req) {
   const { organization, requestId } = req;
   const organizationId = organization.id;
+
+  // Parse and validate pagination parameters with defaults and max limit
+  const MAX_LIMIT = 100;
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 25, 1), MAX_LIMIT);
+  const offset = (page - 1) * limit;
 
   try {
     logger.info({
       message: "Fetching alerts for organization",
       organizationId,
+      page,
+      limit,
       requestId,
     });
 
+    // Get total count for pagination metadata
+    const total = await prisma.alert.count({
+      where: { organizationId },
+    });
+
+    // Fetch paginated alerts
     const alerts = await prisma.alert.findMany({
       where: { organizationId },
       orderBy: { flagged_at: "desc" },
       include: {
         transaction: true,
       },
+      skip: offset,
+      take: limit,
     });
 
+    const totalPages = Math.ceil(total / limit);
+
     logger.info({
-      message: `Fetched ${alerts.length} alerts successfully`,
+      message: `Fetched ${alerts.length} alerts successfully (page ${page}/${totalPages})`,
       requestId,
     });
 
-    return createResponse(true, alerts);
+    return {
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages,
+      data: alerts,
+    };
   } catch (error) {
     logger.error({
       message: "Error fetching alerts",
