@@ -57,7 +57,7 @@ model Transaction {
   flagged        Boolean       @default(false)
   alerts         Alert[]
   organizationId Int
-  organization   Organization  @relation(fields: [organizationId], references: [id])
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("transactions")
   @@index([organizationId])
@@ -71,7 +71,7 @@ model Alert {
   flagged_at     DateTime     @default(now())
   transaction    Transaction  @relation(fields: [transaction_id], references: [transaction_id])
   organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("alerts")
   @@index([organizationId])
@@ -86,7 +86,7 @@ model Watchlist {
   risk_level     String   // e.g., "HIGH", "MEDIUM", "LOW"
   description    String?
   organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -159,6 +159,7 @@ model Organization {
   settings        Json?
   apiKeys         ApiKey[]         @relation("OrganizationApiKeys")
   channels        Channel[]
+  billingSubscription    BillingSubscription?
 
   @@map("organizations")
 }
@@ -229,6 +230,31 @@ model Subscription {
   @@map("subscriptions")
 }
 
+model BillingSubscription {
+  id                    Int       @id @default(autoincrement())
+  organizationId        Int       @unique
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  stripeCustomerId      String    @unique
+  stripeSubscriptionId  String?   @unique
+  stripePriceId         String
+  
+  plan                  String    @default("startup") // "startup", "pro", "enterprise"
+  status                String    @default("trialing") // "trialing", "active", "past_due", "canceled", "incomplete"
+  
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean   @default(false)
+  
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@map("billing_subscriptions")
+}
+
 model OrganizationInvitation {
   id              Int              @id @default(autoincrement())
   organizationId  Int
@@ -246,4 +272,14 @@ model OrganizationInvitation {
   @@index([token])
   @@index([email])
   @@map("organization_invitations")
+}
+
+model WebhookEvent {
+  id            Int      @id @default(autoincrement())
+  stripeEventId String   @unique
+  eventType     String
+  processedAt   DateTime @default(now())
+
+  @@index([stripeEventId])
+  @@map("webhook_events")
 }

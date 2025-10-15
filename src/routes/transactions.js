@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { organizationContext } = require("@middleware/organization");
+const { checkSubscription } = require("@middleware/subscription");
 const { validateSchema } = require("@middleware/validation");
 const { apiLimiter } = require("@middleware/rateLimiter");
 const Joi = require("joi");
@@ -175,6 +176,7 @@ router.post(
   apiLimiter,
   hybridAuth,
   organizationContext,
+  checkSubscription,
   validateSchema(createTransactionSchema),
   async (req, res, next) => {
     try {

@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { sendInvitationEmail } = require("@utils/emailService");
+const { createCustomer, createSubscription, PRICE_IDS } = require("@utils/stripe");
 
 const defaultRules = require("@utils/defaultRules");
 
@@ -42,33 +43,159 @@ exports.createOrganization = async (req) => {
     requestId,
   });
 
-  const organization = await prisma.organization.create({
-    data: {
-      name: body.name,
-      members: {
-        create: {
-          userId: id,
-          role: "admin",
+  // Get user details for Stripe customer creation
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { email: true, name: true },
+  });
+
+  // Get default price ID
+  const defaultPriceId = PRICE_IDS.startup || process.env.STRIPE_STARTUP_PRICE_ID;
+  
+  if (!defaultPriceId) {
+    throw new Error("Stripe price ID not configured");
+  }
+
+  let stripeCustomer = null;
+  let stripeSubscription = null;
+  let organization = null;
+
+  try {
+    // Generate DETERMINISTIC idempotency key using requestId
+    // This ensures retries of the same request use the same key
+    const idempotencyKey = `org_create_${requestId}`;
+
+    // Step 1: Create Stripe customer with idempotency
+    stripeCustomer = await createCustomer({
+      email: user.email,
+      name: `${body.name} (${user.name})`,
+      metadata: {
+        userId: id.toString(),
+        organizationName: body.name,
+        requestId,
+      },
+      idempotencyKey: `${idempotencyKey}_customer`,
+    });
+
+    logger.info({
+      message: "Stripe customer created",
+      customerId: stripeCustomer.id,
+      requestId,
+    });
+
+    // Step 2: Create Stripe subscription with trial and idempotency
+    stripeSubscription = await createSubscription({
+      customerId: stripeCustomer.id,
+      priceId: defaultPriceId,
+      trialPeriodDays: 7,
+      metadata: {
+        userId: id.toString(),
+        organizationName: body.name,
+        requestId,
+      },
+      idempotencyKey: `${idempotencyKey}_subscription`,
+    });
+
+    logger.info({
+      message: "Stripe subscription created with trial",
+      subscriptionId: stripeSubscription.id,
+      customerId: stripeCustomer.id,
+      status: stripeSubscription.status,
+      trialStart: stripeSubscription.trial_start,
+      trialEnd: stripeSubscription.trial_end,
+      requestId,
+    });
+
+    // Validate Stripe response
+    if (!stripeSubscription.id || !stripeSubscription.status) {
+      throw new Error("Invalid Stripe subscription response: missing required fields");
+    }
+
+    // Step 3: Create organization in database
+    organization = await prisma.organization.create({
+      data: {
+        name: body.name,
+        members: {
+          create: {
+            userId: id,
+            role: "admin",
+          },
+        },
+        billingSubscription: {
+          create: {
+            stripeCustomerId: stripeCustomer.id,
+            stripeSubscriptionId: stripeSubscription.id,
+            stripePriceId: defaultPriceId,
+            plan: "startup",
+            status: stripeSubscription.status,
+            currentPeriodStart: stripeSubscription.current_period_start 
+              ? new Date(stripeSubscription.current_period_start * 1000) 
+              : null,
+            currentPeriodEnd: stripeSubscription.current_period_end 
+              ? new Date(stripeSubscription.current_period_end * 1000) 
+              : null,
+            trialStart: stripeSubscription.trial_start 
+              ? new Date(stripeSubscription.trial_start * 1000) 
+              : null,
+            trialEnd: stripeSubscription.trial_end 
+              ? new Date(stripeSubscription.trial_end * 1000) 
+              : null,
+            cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end || false,
+          },
         },
       },
-    },
-  });
+      include: {
+        billingSubscription: true,
+      },
+    });
 
-  logger.info({
-    message: "Organization created successfully",
-    organizationId: organization.id,
-    requestId,
-  });
-
-  // Insert default rules
-  await prisma.rule.createMany({
-    data: defaultRules.map((rule) => ({
-      ...rule,
+    logger.info({
+      message: "Organization created successfully",
       organizationId: organization.id,
-    })),
-  });
+      stripeCustomerId: stripeCustomer.id,
+      stripeSubscriptionId: stripeSubscription.id,
+      requestId,
+    });
 
-  return createResponse(true, organization);
+    // Step 4: Insert default rules
+    await prisma.rule.createMany({
+      data: defaultRules.map((rule) => ({
+        ...rule,
+        organizationId: organization.id,
+      })),
+    });
+
+    return createResponse(true, organization);
+  } catch (error) {
+    logger.error({
+      message: "Error creating organization - REQUIRES MANUAL RECONCILIATION",
+      userId: id,
+      organizationName: body.name,
+      stripeCustomerId: stripeCustomer?.id || null,
+      stripeSubscriptionId: stripeSubscription?.id || null,
+      organizationId: organization?.id || null,
+      phase: !stripeCustomer ? "stripe_customer" : 
+             !stripeSubscription ? "stripe_subscription" :
+             !organization ? "database_organization" : "default_rules",
+      error: error.message,
+      stack: error.stack,
+      requestId,
+    });
+
+    if (stripeCustomer && !organization) {
+      logger.error({
+        message: "ORPHANED STRIPE RESOURCES - Customer and/or subscription created without DB record",
+        stripeCustomerId: stripeCustomer.id,
+        stripeSubscriptionId: stripeSubscription?.id || null,
+        userId: id,
+        organizationName: body.name,
+        requestId,
+        cleanupRequired: true,
+      });
+    }
+
+    throw error;
+  }
 };
 
 exports.getOrganizations = async (req) => {
@@ -858,6 +985,46 @@ exports.deleteOrganization = async (req, organizationId) => {
   });
 
   try {
+    // Check if organization has an active subscription
+    const organization = await prisma.organization.findUnique({
+      where: { id: parseInt(organizationId) },
+      include: {
+        billingSubscription: true,
+      },
+    });
+
+    if (!organization) {
+      const err = new Error("Organization not found");
+      err.status = 404;
+      throw err;
+    }
+
+    const { billingSubscription } = organization;
+
+    if (billingSubscription) {
+      const { status, cancelAtPeriodEnd } = billingSubscription;
+      
+      // Only block deletion for active paid subscriptions
+      const isActivePaid = status === 'active' && !cancelAtPeriodEnd;
+      
+      if (isActivePaid) {
+        logger.warn({
+          message: "Cannot delete organization with active paid subscription",
+          organizationId,
+          subscriptionStatus: status,
+          cancelAtPeriodEnd,
+          requestId,
+        });
+        
+        const err = new Error(
+          "Cannot delete organization with an active paid subscription. Please cancel your subscription first through the billing portal."
+        );
+        err.status = 409; // Conflict
+        err.code = "ACTIVE_SUBSCRIPTION";
+        throw err;
+      }
+    }
+
     await prisma.organization.delete({
       where: { id: parseInt(organizationId) },
     });
@@ -876,7 +1043,7 @@ exports.deleteOrganization = async (req, organizationId) => {
       message: "Error deleting organization",
       organizationId,
       requestId,
-      error,
+      error: error.message,
     });
     throw error;
   }
@@ -1387,3 +1554,4 @@ exports.updateMemberRole = async (req, organizationId, userId) => {
     throw error;
   }
 };
+
