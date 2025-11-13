@@ -69,6 +69,10 @@ const options = {
         name: "Channels",
         description: "Integration channel management endpoints",
       },
+      {
+        name: "Crawlers",
+        description: "Crawler management endpoints",
+      },
     ],
   },
   apis: ["./src/routes/*.js", "./src/swagger/schemas.js"],

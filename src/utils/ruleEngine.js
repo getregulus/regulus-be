@@ -66,10 +66,14 @@ const evaluateCondition = (transaction, condition) => {
 
 // Evaluate a transaction against all rules
 const evaluateTransaction = (transaction, rules) => {
+  // Filter to only ACTIVE rules
+  const activeRules = rules.filter(rule => rule.status === 'ACTIVE');
+  
   logger.info({
     message: "Evaluating transaction against rules",
     transactionId: transaction.transaction_id,
-    ruleCount: rules.length,
+    ruleCount: activeRules.length,
+    totalRules: rules.length,
   });
 
   const results = {
@@ -78,7 +82,7 @@ const evaluateTransaction = (transaction, rules) => {
     matchedRules: [],
   };
 
-  for (const rule of rules) {
+  for (const rule of activeRules) {
     try {
       const matches = evaluateCondition(transaction, rule);
 

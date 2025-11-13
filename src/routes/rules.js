@@ -10,6 +10,8 @@ const {
   createRule,
   updateRule,
   deleteRule,
+  approveRule,
+  rejectRule,
 } = require("@controllers/ruleController");
 
 const createRuleSchema = Joi.object({
@@ -441,6 +443,128 @@ router.delete(
   async (req, res, next) => {
     try {
       const result = await deleteRule(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /rules/{id}/approve:
+ *   post:
+ *     summary: Approve draft rule (change status to ACTIVE)
+ *     tags: [Rules]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID (required for organization context)
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Rule ID
+ *     responses:
+ *       200:
+ *         description: Rule approved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Rule'
+ *       400:
+ *         description: Rule is not in DRAFT status
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post(
+  "/:id/approve",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await approveRule(req, req.params.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /rules/{id}/reject:
+ *   post:
+ *     summary: Reject draft rule (archive it)
+ *     tags: [Rules]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID (required for organization context)
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Rule ID
+ *     responses:
+ *       200:
+ *         description: Rule rejected successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Rule'
+ *       400:
+ *         description: Rule is not in DRAFT status
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post(
+  "/:id/reject",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await rejectRule(req, req.params.id);
       res.status(200).json(result);
     } catch (error) {
       next(error);

@@ -116,6 +116,14 @@ enum RuleOperator {
   @@map("rule_operator")
 }
 
+enum RuleStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@map("rule_status")
+}
+
 model Rule {
   id             Int          @id @default(autoincrement())
   rule_name      String
@@ -123,12 +131,22 @@ model Rule {
   operator        RuleOperator
   value           String
   organizationId  Int
+  status          RuleStatus  @default(ACTIVE)
+  source          String?     // Tracks if rule came from crawler
+  sourceUrl       String?     // Original source URL
+  jurisdiction    String?     // Jurisdiction identifier
+  crawledAt       DateTime?   // When rule was discovered
+  ruleHash        String?      // SHA256 hash for duplicate detection
+  metadata        Json?       // Structured metadata: { pluginVersion, crawlId, pipelineVersion }
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscriptions   Subscription[]
 
   @@unique([rule_name, organizationId])
+  @@unique([ruleHash, organizationId])
+  @@index([status])
+  @@index([jurisdiction])
   @@map("rules")
 }
 
@@ -157,6 +175,8 @@ model Organization {
   auditLogs       AuditLog[]
   status          String           @default("active")
   settings        Json?
+  jurisdictions   Json?            // Array of enabled jurisdictions: ["uk", "eu-mica", "us-fincen"]
+  crawlerSettings Json?            // Crawler configuration: schedule frequency, last crawl timestamps
   apiKeys         ApiKey[]         @relation("OrganizationApiKeys")
   channels        Channel[]
   billingSubscription    BillingSubscription?

@@ -1389,6 +1389,172 @@ exports.cancelInvitation = async (req, organizationId, invitationId) => {
   }
 };
 
+// Jurisdiction management endpoints
+exports.getJurisdictions = async (req, organizationId) => {
+  const { requestId } = req;
+  const orgId = parseInt(organizationId);
+
+  try {
+    logger.info({
+      message: 'Fetching jurisdictions',
+      organizationId: orgId,
+      requestId,
+    });
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { jurisdictions: true, crawlerSettings: true },
+    });
+
+    if (!organization) {
+      const err = new Error('Organization not found');
+      err.status = 404;
+      throw err;
+    }
+
+    return createResponse(true, {
+      jurisdictions: organization.jurisdictions || [],
+      crawlerSettings: organization.crawlerSettings || {},
+    });
+  } catch (error) {
+    logger.error({
+      message: 'Error fetching jurisdictions',
+      organizationId: orgId,
+      requestId,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+exports.updateJurisdictions = async (req, organizationId) => {
+  const { body, requestId } = req;
+  const orgId = parseInt(organizationId);
+
+  const schema = Joi.object({
+    jurisdictions: Joi.array().items(Joi.string()).required(),
+  });
+
+  const { error, value } = schema.validate(body);
+  if (error) {
+    const err = new Error(error.details[0].message);
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    logger.info({
+      message: 'Updating jurisdictions',
+      organizationId: orgId,
+      jurisdictions: value.jurisdictions,
+      requestId,
+    });
+
+    const organization = await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        jurisdictions: value.jurisdictions,
+      },
+    });
+
+    await logAudit(req, {
+      action: `Updated jurisdictions: ${value.jurisdictions.join(', ')}`,
+    });
+
+    return createResponse(true, {
+      jurisdictions: organization.jurisdictions,
+    });
+  } catch (error) {
+    logger.error({
+      message: 'Error updating jurisdictions',
+      organizationId: orgId,
+      requestId,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+exports.updateCrawlerSettings = async (req, organizationId) => {
+  const { body, requestId } = req;
+  const orgId = parseInt(organizationId);
+
+  const schema = Joi.object({
+    crawlerSettings: Joi.object().required(),
+  });
+
+  const { error, value } = schema.validate(body);
+  if (error) {
+    const err = new Error(error.details[0].message);
+    err.status = 400;
+    throw err;
+  }
+
+  try {
+    logger.info({
+      message: 'Updating crawler settings',
+      organizationId: orgId,
+      requestId,
+    });
+
+    const organization = await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        crawlerSettings: value.crawlerSettings,
+      },
+    });
+
+    await logAudit(req, {
+      action: 'Updated crawler settings',
+    });
+
+    return createResponse(true, {
+      crawlerSettings: organization.crawlerSettings,
+    });
+  } catch (error) {
+    logger.error({
+      message: 'Error updating crawler settings',
+      organizationId: orgId,
+      requestId,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
+// Get organizations with enabled jurisdictions (for orchestrator)
+exports.getOrganizationsWithJurisdictions = async (req) => {
+  try {
+    const organizations = await prisma.organization.findMany({
+      where: {
+        jurisdictions: {
+          not: null,
+        },
+        status: 'active',
+      },
+      select: {
+        id: true,
+        name: true,
+        jurisdictions: true,
+        crawlerSettings: true,
+      },
+    });
+
+    // Filter organizations that have at least one jurisdiction
+    const orgsWithJurisdictions = organizations.filter(
+      (org) => org.jurisdictions && Array.isArray(org.jurisdictions) && org.jurisdictions.length > 0
+    );
+
+    return createResponse(true, orgsWithJurisdictions);
+  } catch (error) {
+    logger.error({
+      message: 'Error fetching organizations with jurisdictions',
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
 exports.updateMemberRole = async (req, organizationId, userId) => {
   const { requestId, user: currentUser, body } = req;
   const orgId = parseInt(organizationId);

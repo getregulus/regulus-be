@@ -17,6 +17,7 @@ const watchlistRoutes = require("@routes/watchlist");
 const auditRoutes = require("@routes/audit");
 const channelRoutes = require("@routes/channels");
 const subscriptionRoutes = require("@routes/subscriptions");
+const crawlerRoutes = require("@routes/crawlers");
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use("/watchlist", watchlistRoutes);
 app.use("/audit", auditRoutes);
 app.use("/channels", channelRoutes);
 app.use("/subscriptions", subscriptionRoutes);
+app.use("/crawlers", crawlerRoutes);
 
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

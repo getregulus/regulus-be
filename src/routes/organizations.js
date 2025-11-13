@@ -21,6 +21,10 @@ const {
   acceptInvitation,
   getInvitationDetails,
   cancelInvitation,
+  getJurisdictions,
+  updateJurisdictions,
+  updateCrawlerSettings,
+  getOrganizationsWithJurisdictions,
 } = require("@controllers/organizationController");
 
 const createOrgSchema = Joi.object({
@@ -1144,6 +1148,264 @@ router.delete(
         req.params.id,
         req.params.invitationId
       );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/jurisdictions:
+ *   get:
+ *     summary: Get enabled jurisdictions for organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     responses:
+ *       200:
+ *         description: Jurisdictions fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     jurisdictions:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["uk", "eu-mica", "us-fincen"]
+ *                     crawlerSettings:
+ *                       type: object
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get(
+  "/jurisdictions",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin", "auditor"]),
+  async (req, res, next) => {
+    try {
+      const result = await getJurisdictions(req, req.organization.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/jurisdictions:
+ *   put:
+ *     summary: Update enabled jurisdictions for organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - jurisdictions
+ *             properties:
+ *               jurisdictions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["uk", "eu-mica", "us-fincen"]
+ *     responses:
+ *       200:
+ *         description: Jurisdictions updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     jurisdictions:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.put(
+  "/jurisdictions",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await updateJurisdictions(req, req.organization.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/crawler-settings:
+ *   put:
+ *     summary: Update crawler settings for organization
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: x-organization-id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Organization ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - crawlerSettings
+ *             properties:
+ *               crawlerSettings:
+ *                 type: object
+ *                 description: Crawler configuration object
+ *     responses:
+ *       200:
+ *         description: Crawler settings updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     crawlerSettings:
+ *                       type: object
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.put(
+  "/crawler-settings",
+  apiLimiter,
+  authenticate,
+  organizationContext,
+  authorize(["admin"]),
+  async (req, res, next) => {
+    try {
+      const result = await updateCrawlerSettings(req, req.organization.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /organizations/with-jurisdictions:
+ *   get:
+ *     summary: Get organizations with enabled jurisdictions (for orchestrator)
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of organizations with jurisdictions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       jurisdictions:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                       crawlerSettings:
+ *                         type: object
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get(
+  "/with-jurisdictions",
+  apiLimiter,
+  authenticate,
+  async (req, res, next) => {
+    try {
+      const result = await getOrganizationsWithJurisdictions(req);
       res.status(200).json(result);
     } catch (error) {
       next(error);

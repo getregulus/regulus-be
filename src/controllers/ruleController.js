@@ -68,6 +68,9 @@ async function getRules(req) {
   const page = Math.max(parseInt(req.query.page) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit) || 25, 1), MAX_LIMIT);
   const offset = (page - 1) * limit;
+  
+  // Parse status filter (default: ACTIVE, allow DRAFT, ARCHIVED, or all)
+  const statusFilter = req.query.status || 'ACTIVE';
 
   try {
     logger.info({
@@ -75,17 +78,22 @@ async function getRules(req) {
       organizationId: organization.id,
       page,
       limit,
+      status: statusFilter,
       requestId,
     });
 
+    // Build where clause
+    const where = { organizationId: organization.id };
+    if (statusFilter !== 'ALL') {
+      where.status = statusFilter;
+    }
+
     // Get total count for pagination metadata
-    const total = await prisma.rule.count({
-      where: { organizationId: organization.id },
-    });
+    const total = await prisma.rule.count({ where });
 
     // Fetch paginated rules
     const rules = await prisma.rule.findMany({
-      where: { organizationId: organization.id },
+      where,
       include: {
         subscriptions: {
           where: {
@@ -234,9 +242,137 @@ async function deleteRule(req, id) {
   }
 }
 
+// Approve draft rule (change status to ACTIVE)
+async function approveRule(req, id) {
+  const { organization, requestId } = req;
+
+  try {
+    logger.info({
+      message: "Approving rule",
+      ruleId: id,
+      requestId,
+    });
+
+    const rule = await prisma.rule.findUnique({
+      where: {
+        id: parseInt(id),
+        organizationId: organization.id,
+      },
+    });
+
+    if (!rule) {
+      const err = new Error("Rule not found");
+      err.status = 404;
+      throw err;
+    }
+
+    if (rule.status !== 'DRAFT') {
+      const err = new Error("Only DRAFT rules can be approved");
+      err.status = 400;
+      throw err;
+    }
+
+    const updatedRule = await prisma.rule.update({
+      where: {
+        id: parseInt(id),
+        organizationId: organization.id,
+      },
+      data: {
+        status: 'ACTIVE',
+      },
+    });
+
+    logger.info({
+      message: "Rule approved successfully",
+      ruleId: id,
+      requestId,
+    });
+
+    await logAudit(req, {
+      action: `Approved rule: ${rule.rule_name}`,
+    });
+
+    return createResponse(true, updatedRule);
+  } catch (error) {
+    logger.error({
+      message: "Error approving rule",
+      ruleId: id,
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+}
+
+// Reject draft rule (archive it)
+async function rejectRule(req, id) {
+  const { organization, requestId } = req;
+
+  try {
+    logger.info({
+      message: "Rejecting rule",
+      ruleId: id,
+      requestId,
+    });
+
+    const rule = await prisma.rule.findUnique({
+      where: {
+        id: parseInt(id),
+        organizationId: organization.id,
+      },
+    });
+
+    if (!rule) {
+      const err = new Error("Rule not found");
+      err.status = 404;
+      throw err;
+    }
+
+    if (rule.status !== 'DRAFT') {
+      const err = new Error("Only DRAFT rules can be rejected");
+      err.status = 400;
+      throw err;
+    }
+
+    const updatedRule = await prisma.rule.update({
+      where: {
+        id: parseInt(id),
+        organizationId: organization.id,
+      },
+      data: {
+        status: 'ARCHIVED',
+      },
+    });
+
+    logger.info({
+      message: "Rule rejected successfully",
+      ruleId: id,
+      requestId,
+    });
+
+    await logAudit(req, {
+      action: `Rejected rule: ${rule.rule_name}`,
+    });
+
+    return createResponse(true, updatedRule);
+  } catch (error) {
+    logger.error({
+      message: "Error rejecting rule",
+      ruleId: id,
+      organizationId: organization.id,
+      requestId,
+      error,
+    });
+    throw error;
+  }
+}
+
 module.exports = {
   createRule,
   getRules,
   updateRule,
   deleteRule,
+  approveRule,
+  rejectRule,
 };
