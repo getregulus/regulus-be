@@ -8,7 +8,10 @@ const Joi = require('joi');
 const crawlerController = require('@controllers/crawlerController');
 const ruleImporter = require('@services/ruleImporter');
 const logger = require('@utils/logger');
-const crypto = require('crypto');
+const {
+  verifyWebhookSignature,
+  extractSignatureFromHeaders,
+} = require('@utils/webhookSignature');
 
 // Validation schemas
 const triggerCrawlSchema = Joi.object({
@@ -95,10 +98,15 @@ router.post(
  *     tags: [Crawlers]
  *     parameters:
  *       - in: header
- *         name: x-webhook-secret
- *         required: true
+ *         name: x-webhook-signature
  *         schema:
  *           type: string
+ *         description: HMAC-SHA256 signature (sha256=hexsignature)
+ *       - in: header
+ *         name: x-webhook-secret
+ *         schema:
+ *           type: string
+ *         description: Legacy webhook secret (for backward compatibility)
  *     requestBody:
  *       required: true
  *       content:
@@ -117,29 +125,16 @@ router.post(
  *       200:
  *         description: Webhook processed successfully
  *       401:
- *         description: Unauthorized - Invalid webhook secret
+ *         description: Unauthorized - Invalid webhook signature or secret
  *       400:
  *         description: Bad request - Missing required fields
  */
 router.post('/webhook', async (req, res, next) => {
   try {
-    // Validate webhook signature
     const webhookSecret = process.env.WEBHOOK_SECRET;
-    const providedSecret = req.headers['x-webhook-secret'];
-
-    if (webhookSecret && providedSecret !== webhookSecret) {
-      logger.warn({
-        message: 'Invalid webhook secret',
-        ip: req.ip,
-      });
-      return res.status(401).json({
-        success: false,
-        error: 'Unauthorized',
-      });
-    }
-
     const { organizationId, envelope } = req.body;
 
+    // Validate required fields first
     if (!organizationId || !envelope) {
       return res.status(400).json({
         success: false,
@@ -147,10 +142,59 @@ router.post('/webhook', async (req, res, next) => {
       });
     }
 
+    // Validate webhook signature (cryptographic or legacy)
+    if (webhookSecret) {
+      const signature = extractSignatureFromHeaders(req.headers);
+      const payload = { organizationId, envelope };
+
+      if (signature) {
+        // Verify cryptographic signature (preferred method)
+        if (!verifyWebhookSignature(payload, signature, webhookSecret)) {
+          logger.warn({
+            message: 'Invalid webhook signature',
+            ip: req.ip,
+            hasSignature: true,
+          });
+          return res.status(401).json({
+            success: false,
+            error: 'Unauthorized - Invalid signature',
+          });
+        }
+        logger.debug({
+          message: 'Webhook signature verified cryptographically',
+          organizationId,
+        });
+      } else {
+        // Fallback to legacy header comparison for backward compatibility
+        const providedSecret = req.headers['x-webhook-secret'];
+        if (providedSecret !== webhookSecret) {
+          logger.warn({
+            message: 'Invalid webhook secret (legacy method)',
+            ip: req.ip,
+            hasSignature: false,
+          });
+          return res.status(401).json({
+            success: false,
+            error: 'Unauthorized - Invalid secret',
+          });
+        }
+        logger.debug({
+          message: 'Webhook verified using legacy secret header',
+          organizationId,
+        });
+      }
+    } else {
+      logger.warn({
+        message: 'WEBHOOK_SECRET not configured, accepting all webhooks',
+        ip: req.ip,
+      });
+    }
+
     logger.info({
       message: 'Received crawler webhook',
       organizationId,
       jurisdiction: envelope.jurisdiction,
+      crawlId: envelope.crawlId,
       rulesCount: envelope.rules?.length || 0,
     });
 
@@ -165,6 +209,7 @@ router.post('/webhook', async (req, res, next) => {
     logger.error({
       message: 'Error processing crawler webhook',
       error: error.message,
+      stack: error.stack,
     });
     next(error);
   }
