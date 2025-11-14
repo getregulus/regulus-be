@@ -1,138 +1,181 @@
-# **Regulus MVP**
+# Regulus
 
-Regulus is a modular and customizable Anti-Money Laundering (AML) monitoring system. Designed for financial systems and fintech platforms, it evaluates transactions, applies rules, monitors watchlists, and generates alerts for suspicious activity.
+A modular and customizable Anti-Money Laundering (AML) monitoring system. Designed for DeFi and TradFi platforms, Regulus evaluates transactions, applies rules, monitors watchlists, and generates alerts for suspicious activity.
 
-## **Features**
+## Features
 
 - **Transaction Monitoring**: Evaluate transactions based on predefined and custom rules.
-- **Custom Rules**: Define dynamic conditions (e.g., `amount > 10000`).
-- **Watchlist Matching**: Flag transactions involving high-risk entities or countries.
-- **Alerts**: Automatically generate alerts for flagged transactions.
-- **API Documentation**: Comprehensive Swagger integration at `/api-docs`.
-- **Logging**: Structured request and response logging with `pino`.
+- **Custom Rules**: Define dynamic conditions with flexible operators.
+- **Automated Alerts**: Generate and manage alerts for flagged transactions.
+- **Multi-Organization**: Support for multiple organizations with isolated data.
+- **User Management**: Role-based access control (admin, auditor, viewer).
+- **Crawler Integration**: Automated rule discovery from regulatory sources.
+- **Audit Logging**: Complete audit trail for all actions.
+- **Notification Channels**: Email and Slack integrations.
+- **API Documentation**: Comprehensive Swagger documentation.
 
-## **Tech Stack** 
+## Tech Stack
 
 - **Backend**: Node.js (Express)
-- **Database**: PostgreSQL
+- **Database**: PostgreSQL with Prisma ORM
+- **Authentication**: JWT with bcrypt
 - **Logging**: Pino
-- **API Documentation**: Swagger
+- **API Documentation**: Swagger/OpenAPI
 - **Containerization**: Docker + Docker Compose
 
-## **Getting Started**
+## Getting Started
 
-### Clone the Repository
+### Prerequisites
 
+- Node.js 18+
+- PostgreSQL 14+
+- Docker & Docker Compose (optional)
+
+### Installation
+
+1. **Clone the repository**
 ```bash
 git clone <repository_url>
 cd regulus
 ```
 
-### Configure Environment Variables
-Create a .env file in the root directory:
-
-```
-NODE_ENV=development
-PORT=3000
-DB_HOST=regulus-db
-DB_PORT=5432
-DB_USER=postgres
-DB_PASS=postgres
-DB_NAME=regulus
-LOG_LEVEL=info
-```
-
-### Seeding the Database
-
-To seed the database with initial data, run the following command:
-
-```bash
-npm run seed
-```
-
-This command will execute the seed script located in the `prisma` directory and populate your database with predefined data.
-
-#### Start the Application
-Run the app using Docker:
-
-```bash
-docker-compose up --build
-```
-
-## **API Endpoints**
-
-### Transactions
-- **GET** `/transactions`: Fetch all transactions.
-- **POST** `/transactions`: Create and evaluate a transaction.
-
-### Alerts
-- **GET** `/alerts`: Retrieve all alerts.
-- **DELETE** `/alerts/:id`: Delete a specific alert by ID.
-
-### Rules
-- **GET** `/rules`: Fetch all custom rules.
-- **POST** `/rules`: Add a new rule.
-- **PUT** `/rules/:id`: Update an existing rule by ID.
-- **DELETE** `/rules/:id`: Remove a rule by ID.
-
-### Watchlist
-- **GET** `/watchlist`: Retrieve all watchlist entries.
-- **POST** `/watchlist`: Add a new watchlist entry.
-- **DELETE** `/watchlist/:id`: Remove a watchlist entry by ID.
-
-### Organizations
-- **GET** `/organizations`: Fetch all organizations.
-- **POST** `/organizations`: Create a new organization.
-- **GET** `/organizations/:id`: Fetch a specific organization by ID.
-- **PUT** `/organizations/:id`: Update an existing organization by ID.
-- **DELETE** `/organizations/:id`: Remove an organization by ID.
-
-### Users
-- **GET** `/users`: Fetch all users.
-- **POST** `/users`: Create a new user.
-- **GET** `/users/:id`: Fetch a specific user by ID.
-- **PUT** `/users/:id`: Update an existing user by ID.
-- **DELETE** `/users/:id`: Remove a user by ID.
-
-### Swagger Documentation
-Interactive API documentation is available at:
-```
-http://localhost:3000/api-docs
-```
-
-### Project Structure
-```
-src/
-├── controllers/       # Handles business logic for routes
-├── middleware/        # Middleware for request logging
-├── models/            # Database configuration and query helpers
-├── routes/            # API route definitions
-├── utils/             # Utility functions
-├── swagger.js         # Swagger setup for API docs
-├── app.js             # App entry and middleware setup
-├── server.js          # Server configuration
-```
-
-### Development
-Running Locally
-To run the app locally without Docker:
-
-1.Install dependencies:
+2. **Install dependencies**
 ```bash
 npm install
 ```
 
-2.Start the app:
+3. **Configure environment variables**
+
+Create a `.env` file in the root directory:
+
+```env
+# Server
+NODE_ENV=development
+PORT=3000
+
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/regulus
+
+# JWT Authentication
+JWT_SECRET=your-secret-key-here
+API_KEY_SECRET=your-api-key-secret
+
+# Email (optional - for notifications)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+EMAIL_FROM=noreply@regulus.com
+
+# Slack (optional - for notifications)
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Orchestrator Integration (optional)
+ORCHESTRATOR_URL=http://localhost:3001
+ORCHESTRATOR_API_KEY=your-orchestrator-api-key
+WEBHOOK_SECRET=shared-webhook-secret
+
+# Logging
+LOG_LEVEL=info
+```
+
+4. **Set up database**
+
+```bash
+# Generate Prisma client
+npx prisma generate
+
+# Run migrations
+npx prisma migrate dev
+
+# Seed database with initial data (optional)
+npm run seed
+```
+
+5. **Start the application**
+
+**With Docker:**
+```bash
+docker-compose up --build
+```
+
+**Without Docker:**
 ```bash
 npm start
 ```
 
-Testing
-1. Use Swagger to test all endpoints:
+The API will be available at `http://localhost:3000`
+
+
+## API Documentation
+
+Full API documentation is available at:
+- **Live Documentation**: https://getregulus.co/docs/api-docs
+- **Local Swagger UI**: http://localhost:3000/api-docs (when running locally)
+
+
+## Development
+
+### Running Locally
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm start
+
+# View database in Prisma Studio
+npx prisma studio
+
+# Check logs
+tail -f logs/app.log
+```
+
+### Database Management
+
+```bash
+# Create a new migration
+npx prisma migrate dev --name description_of_change
+
+# Reset database (WARNING: deletes all data)
+npx prisma migrate reset
+
+# View database schema
+npx prisma studio
+```
+
+### Testing
+
+Use Swagger UI for API testing:
 ```
 http://localhost:3000/api-docs
 ```
-2. Check logs using Docker:
+
+### Docker Commands
+
+```bash
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f regulus-aml
+
+# Stop services
+docker-compose down
+
+# Rebuild and start
+docker-compose up --build
 ```
+
+For issues or questions, check the API documentation or review logs:
+```bash
 docker-compose logs regulus-aml
+# or
+tail -f logs/app.log
 ```
